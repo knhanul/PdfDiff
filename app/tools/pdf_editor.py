@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
 
 from app.common.styles import MODERN_QSS
 
-ZOOM_STEPS = (0.6, 0.8, 1.0, 1.25, 1.6, 2.0, 2.5)
 BASE_ICON = (120, 160)
 
 
@@ -32,7 +31,7 @@ class PdfEditorWidget(QWidget):
         self.checked = set()         # source page indices
         self._thumb_cache = {}
         self._updating_pages = False
-        self._zoom_index = ZOOM_STEPS.index(1.0)
+        self.thumb_scale = 1.0
         self._planned_action = None
 
         root = QVBoxLayout(self)
@@ -66,34 +65,57 @@ class PdfEditorWidget(QWidget):
         self.file_list.model().rowsMoved.connect(self._on_file_order_changed)
         left_layout.addWidget(self.file_list)
 
-        page_head = QHBoxLayout()
-        page_head.addWidget(QLabel("페이지 미리보기"))
-        self.lbl_sel = QLabel("선택 0 / 전체 0")
-        page_head.addWidget(self.lbl_sel)
-        page_head.addStretch()
+        viewer = QFrame()
+        viewer_layout = QVBoxLayout(viewer)
+        viewer_layout.setContentsMargins(0, 0, 0, 0)
+        viewer_layout.setSpacing(0)
+
+        toolbar = QFrame()
+        toolbar.setObjectName("pdfToolbar")
+        toolbar.setFixedHeight(40)
+        page_head = QHBoxLayout(toolbar)
+        page_head.setContentsMargins(8, 4, 8, 4)
+        page_head.setSpacing(4)
+
         btn_zoom_out = QPushButton("축소")
+        btn_zoom_out.setObjectName("toolbarBtn")
+        btn_zoom_out.setFixedSize(46, 30)
         btn_zoom_out.clicked.connect(self.zoom_out)
         btn_zoom_in = QPushButton("확대")
+        btn_zoom_in.setObjectName("toolbarBtn")
+        btn_zoom_in.setFixedSize(46, 30)
         btn_zoom_in.clicked.connect(self.zoom_in)
-        self.lbl_zoom = QLabel("100%")
-        self.lbl_zoom.setMinimumWidth(48)
-        page_head.addWidget(btn_zoom_out)
-        page_head.addWidget(self.lbl_zoom)
-        page_head.addWidget(btn_zoom_in)
-        left_layout.addLayout(page_head)
-
-        sel_row = QHBoxLayout()
+        self.lbl_zoom = QLineEdit("100%")
+        self.lbl_zoom.setObjectName("pageSpin")
+        self.lbl_zoom.setFixedSize(64, 30)
+        self.lbl_zoom.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_zoom.setToolTip("배율을 입력하세요. 예: 150")
+        self.lbl_zoom.editingFinished.connect(self._apply_thumb_zoom_input)
+        self.lbl_sel = QLabel("선택 0 / 전체 0")
+        self.lbl_sel.setObjectName("toolbarLabel")
         btn_odd = QPushButton("홀수")
+        btn_odd.setObjectName("toolbarBtn")
+        btn_odd.setFixedSize(46, 30)
         btn_odd.clicked.connect(lambda: self._select_parity(True))
         btn_even = QPushButton("짝수")
+        btn_even.setObjectName("toolbarBtn")
+        btn_even.setFixedSize(46, 30)
         btn_even.clicked.connect(lambda: self._select_parity(False))
-        btn_clear = QPushButton("선택 해제")
+        btn_clear = QPushButton("해제")
+        btn_clear.setObjectName("toolbarBtn")
+        btn_clear.setFixedSize(46, 30)
+        btn_clear.setToolTip("선택 해제")
         btn_clear.clicked.connect(self._clear_checks)
-        sel_row.addWidget(btn_odd)
-        sel_row.addWidget(btn_even)
-        sel_row.addWidget(btn_clear)
-        sel_row.addStretch()
-        left_layout.addLayout(sel_row)
+        page_head.addWidget(btn_zoom_out)
+        page_head.addWidget(btn_zoom_in)
+        page_head.addWidget(self.lbl_zoom)
+        page_head.addSpacing(8)
+        page_head.addWidget(btn_odd)
+        page_head.addWidget(btn_even)
+        page_head.addWidget(btn_clear)
+        page_head.addStretch()
+        page_head.addWidget(self.lbl_sel)
+        viewer_layout.addWidget(toolbar)
 
         self.page_list = QListWidget()
         self.page_list.setViewMode(QListWidget.ViewMode.IconMode)
@@ -102,8 +124,10 @@ class PdfEditorWidget(QWidget):
         self.page_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.page_list.setSpacing(8)
         self.page_list.itemChanged.connect(self._on_page_item_changed)
-        self.page_list.itemSelectionChanged.connect(self._on_page_selection_changed)
-        left_layout.addWidget(self.page_list, 1)
+        self.page_list.itemPressed.connect(self._on_page_pressed)
+        self.page_list.itemClicked.connect(self._on_page_clicked)
+        viewer_layout.addWidget(self.page_list, 1)
+        left_layout.addWidget(viewer, 1)
         self._apply_zoom_size()
 
         splitter.addWidget(left)
@@ -129,7 +153,6 @@ class PdfEditorWidget(QWidget):
         self.btn_execute = QPushButton("실행")
         self.btn_execute.setObjectName("actionBtn")
         self.btn_execute.clicked.connect(self.do_execute)
-        self.btn_execute.setEnabled(False)
         btn_row.addWidget(self.btn_preview)
         btn_row.addWidget(self.btn_execute)
         right_layout.addLayout(btn_row)
@@ -166,15 +189,15 @@ class PdfEditorWidget(QWidget):
         w = QWidget()
         lay = QVBoxLayout(w)
         self.split_group = QButtonGroup(w)
+        self.radio_keep = QRadioButton("체크한 페이지 / 나머지로 두 파일")
+        self.radio_groups = QRadioButton("체크한 연속 구간마다 파일")
         self.radio_range = QRadioButton("페이지 범위 (예: 1-5, 6-10)")
         self.radio_every = QRadioButton("N페이지마다")
         self.radio_each = QRadioButton("각 페이지 개별 추출")
-        self.radio_groups = QRadioButton("체크한 연속 구간마다 파일")
-        self.radio_keep = QRadioButton("체크한 페이지 / 나머지로 두 파일")
-        self.radio_range.setChecked(True)
-        for radio in (self.radio_range, self.radio_every, self.radio_each, self.radio_groups, self.radio_keep):
+        for radio in (self.radio_keep, self.radio_groups, self.radio_range, self.radio_every, self.radio_each):
             self.split_group.addButton(radio)
             lay.addWidget(radio)
+        self.radio_keep.setChecked(True)
         self.edit_range = QLineEdit()
         self.edit_range.setPlaceholderText("1-5, 6-10, 11-")
         lay.addWidget(self.edit_range)
@@ -291,7 +314,7 @@ class PdfEditorWidget(QWidget):
         rot = item_plan["rot"] % 360
         if rot:
             pixmap = pixmap.transformed(QTransform().rotate(rot), Qt.TransformationMode.SmoothTransformation)
-        side = int(BASE_ICON[0] * ZOOM_STEPS[self._zoom_index] * 2)
+        side = int(BASE_ICON[0] * self.thumb_scale * 2)
         return pixmap.scaled(side, side, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
     def _refresh_page_thumbnails(self):
@@ -312,60 +335,75 @@ class PdfEditorWidget(QWidget):
         self._update_sel_label()
 
     def _apply_zoom_size(self):
-        scale = ZOOM_STEPS[self._zoom_index]
+        scale = self.thumb_scale
         w = int(BASE_ICON[0] * scale)
         h = int(BASE_ICON[1] * scale)
         self.page_list.setIconSize(QSize(w, h))
         self.page_list.setGridSize(QSize(w + 28, h + 40))
-        self.lbl_zoom.setText(f"{int(scale * 100)}%")
+        self.lbl_zoom.blockSignals(True)
+        self.lbl_zoom.setText(f"{int(round(scale * 100))}%")
+        self.lbl_zoom.blockSignals(False)
+
+    def _set_thumb_scale(self, scale):
+        self.thumb_scale = min(3.0, max(0.4, scale))
+        self._apply_zoom_size()
+        if self.page_plan:
+            self._refresh_page_thumbnails()
 
     def zoom_in(self):
-        if self._zoom_index < len(ZOOM_STEPS) - 1:
-            self._zoom_index += 1
-            self._apply_zoom_size()
-            if self.page_plan:
-                self._refresh_page_thumbnails()
+        self._set_thumb_scale(self.thumb_scale * 1.25)
 
     def zoom_out(self):
-        if self._zoom_index > 0:
-            self._zoom_index -= 1
-            self._apply_zoom_size()
-            if self.page_plan:
-                self._refresh_page_thumbnails()
+        self._set_thumb_scale(self.thumb_scale / 1.25)
 
-    def _checked_sources_from_list(self):
+    def _apply_thumb_zoom_input(self):
+        text = self.lbl_zoom.text().strip().replace("%", "").replace("％", "")
+        if not text:
+            self._apply_zoom_size()
+            return
+        try:
+            percent = float(text)
+        except ValueError:
+            self._apply_zoom_size()
+            return
+        self._set_thumb_scale(percent / 100.0)
+
+    def _sync_checked(self):
         sources = set()
         for i in range(self.page_list.count()):
             item = self.page_list.item(i)
             if item.checkState() == Qt.CheckState.Checked or item.isSelected():
                 sources.add(item.data(Qt.ItemDataRole.UserRole))
+        self.checked = sources
         return sources
+
+    def _on_page_pressed(self, item):
+        self._press_check = item.checkState()
+
+    def _on_page_clicked(self, item):
+        if self._updating_pages:
+            return
+        if item.checkState() != getattr(self, "_press_check", item.checkState()):
+            return
+        src = item.data(Qt.ItemDataRole.UserRole)
+        self._updating_pages = True
+        if src in self.checked:
+            self.checked.discard(src)
+            item.setCheckState(Qt.CheckState.Unchecked)
+        else:
+            self.checked.add(src)
+            item.setCheckState(Qt.CheckState.Checked)
+        self._updating_pages = False
+        self._update_sel_label()
 
     def _on_page_item_changed(self, item):
         if self._updating_pages:
             return
         src = item.data(Qt.ItemDataRole.UserRole)
-        self._updating_pages = True
         if item.checkState() == Qt.CheckState.Checked:
             self.checked.add(src)
-            item.setSelected(True)
         else:
             self.checked.discard(src)
-            item.setSelected(False)
-        self._updating_pages = False
-        self._update_sel_label()
-
-    def _on_page_selection_changed(self):
-        if self._updating_pages:
-            return
-        selected = {item.data(Qt.ItemDataRole.UserRole) for item in self.page_list.selectedItems()}
-        self.checked = selected
-        self._updating_pages = True
-        for i in range(self.page_list.count()):
-            item = self.page_list.item(i)
-            src = item.data(Qt.ItemDataRole.UserRole)
-            item.setCheckState(Qt.CheckState.Checked if src in self.checked else Qt.CheckState.Unchecked)
-        self._updating_pages = False
         self._update_sel_label()
 
     def _update_sel_label(self):
@@ -391,6 +429,7 @@ class PdfEditorWidget(QWidget):
     def _require_checked(self):
         if not self._require_doc():
             return False
+        self._sync_checked()
         if not self.checked:
             QMessageBox.warning(self, "알림", "페이지 미리보기에서 페이지를 체크하거나 선택하세요.")
             return False
@@ -471,42 +510,43 @@ class PdfEditorWidget(QWidget):
             self.preview_label.setText("페이지 편집에서 작업을 먼저 선택하세요.")
 
     def _preview_split(self):
+        self._sync_checked()
         if self.current_index < 0:
+            self._planned_action = None
             self.preview_label.setText("먼저 PDF를 불러오세요.")
-            self.btn_execute.setEnabled(False)
-            return
+            return False
         doc = self.docs[self.current_index]
         total = doc.page_count
         base = Path(self.file_paths[self.current_index]).stem
         if self.radio_groups.isChecked() or self.radio_keep.isChecked():
             if not self.checked:
+                self._planned_action = None
                 self.preview_label.setText("나눌 페이지를 미리보기에서 체크하세요.")
-                self.btn_execute.setEnabled(False)
-                return
+                return False
             if self.radio_groups.isChecked():
-                groups = self._checked_groups()
+                groups = [[dict(plan) for plan in group] for group in self._checked_groups()]
                 if not groups:
+                    self._planned_action = None
                     self.preview_label.setText("나눌 페이지를 미리보기에서 체크하세요.")
-                    self.btn_execute.setEnabled(False)
-                    return
+                    return False
                 desc = ", ".join(self._plan_range_text(group) for group in groups)
-                self._planned_action = ("split", {"mode": "groups", "base": base})
+                self._planned_action = ("split", {"mode": "groups", "base": base, "groups": groups})
                 self.preview_label.setText(f"분할 미리보기: 연속 구간 {len(groups)}개 파일\n{desc}")
             else:
-                picked = [plan for plan in self.page_plan if plan["src"] in self.checked]
-                rest = [plan for plan in self.page_plan if plan["src"] not in self.checked]
+                picked = [dict(plan) for plan in self.page_plan if plan["src"] in self.checked]
+                rest = [dict(plan) for plan in self.page_plan if plan["src"] not in self.checked]
                 if not picked or not rest:
+                    self._planned_action = None
                     self.preview_label.setText("선택 페이지와 나머지 페이지가 모두 있어야 두 파일로 나눌 수 있습니다.")
-                    self.btn_execute.setEnabled(False)
-                    return
-                self._planned_action = ("split", {"mode": "keep", "base": base})
+                    return False
+                self._planned_action = ("split", {"mode": "keep", "base": base, "picked": picked, "rest": rest})
                 self.preview_label.setText(f"분할 미리보기: 선택 {len(picked)}페이지 / 나머지 {len(rest)}페이지")
         elif self.radio_range.isChecked():
             text = self.edit_range.text().strip()
             if not text:
+                self._planned_action = None
                 self.preview_label.setText("범위를 입력하세요. 예: 1-5, 6-10")
-                self.btn_execute.setEnabled(False)
-                return
+                return False
             ranges = self._parse_ranges(text, total)
             self._planned_action = ("split", {"mode": "range", "ranges": ranges, "base": base})
             desc = ", ".join(f"{s + 1}-{e}" for s, e in ranges)
@@ -519,7 +559,7 @@ class PdfEditorWidget(QWidget):
         else:
             self._planned_action = ("split", {"mode": "each", "base": base})
             self.preview_label.setText(f"분할 미리보기: {total}개 개별 파일")
-        self.btn_execute.setEnabled(True)
+        return True
 
     def _checked_groups(self):
         groups = []
@@ -543,38 +583,51 @@ class PdfEditorWidget(QWidget):
     def _preview_merge(self):
         if len(self.docs) < 2:
             self.preview_label.setText("병합하려면 PDF를 2개 이상 불러오세요.")
-            self.btn_execute.setEnabled(False)
-            return
+            return False
         names = [os.path.basename(path) for path in self.file_paths]
         self._planned_action = ("merge", {})
         self.preview_label.setText("병합 미리보기 (순서):\n" + " → ".join(names))
-        self.btn_execute.setEnabled(True)
+        return True
 
     def _stage_page(self, mode):
         if not self._require_doc():
             return
-        if mode == "extract" and not self.checked:
-            self.preview_label.setText("추출할 페이지를 체크하세요.")
-            self.btn_execute.setEnabled(False)
-            return
-        self._planned_action = ("page", {"mode": mode})
+        self._sync_checked()
+        if mode == "extract":
+            plans = [dict(plan) for plan in self.page_plan if plan["src"] in self.checked]
+            if not plans:
+                self.preview_label.setText("추출할 페이지를 체크하세요.")
+                return
+        else:
+            plans = [dict(plan) for plan in self.page_plan]
+        self._planned_action = ("page", {"mode": mode, "plans": plans})
         self._preview_page()
 
     def _preview_page(self):
-        mode = self._planned_action[1]["mode"]
-        if mode == "extract":
-            pages = [str(plan["src"] + 1) for plan in self.page_plan if plan["src"] in self.checked]
+        action = self._planned_action[1]
+        plans = action["plans"]
+        if action["mode"] == "extract":
+            pages = [str(plan["src"] + 1) for plan in plans]
             self.preview_label.setText("추출 미리보기: 페이지 " + ", ".join(pages))
         else:
+            rotated = sum(1 for plan in plans if plan["rot"] % 360)
             notes = []
-            rotated = sum(1 for plan in self.page_plan if plan["rot"] % 360)
             if rotated:
                 notes.append(f"회전 {rotated}페이지")
-            notes.append(f"저장 {len(self.page_plan)}페이지")
+            notes.append(f"저장 {len(plans)}페이지")
             self.preview_label.setText("페이지 편집 미리보기: " + ", ".join(notes))
-        self.btn_execute.setEnabled(True)
 
     def do_execute(self):
+        tab = self.tabs.currentIndex()
+        if tab == 0:
+            if not self._preview_split():
+                return
+        elif tab == 1:
+            if not self._preview_merge():
+                return
+        elif not (self._planned_action and self._planned_action[0] == "page"):
+            self.preview_label.setText("페이지 편집에서 작업을 먼저 선택하세요.")
+            return
         if not self._planned_action:
             return
         kind = self._planned_action[0]
@@ -625,29 +678,37 @@ class PdfEditorWidget(QWidget):
         total = doc.page_count
         self.progress.setVisible(True)
         mode = params["mode"]
+        written = []
 
         if mode == "groups":
-            groups = self._checked_groups()
+            groups = params["groups"]
             self.progress.setMaximum(len(groups))
             for i, group in enumerate(groups, start=1):
-                self._write_plans(doc, group, str(out_dir / f"{base}_sel{i}.pdf"))
+                path = str(out_dir / f"{base}_sel{i}.pdf")
+                self._write_plans(doc, group, path)
+                written.append(path)
                 self.progress.setValue(i)
         elif mode == "keep":
-            picked = [plan for plan in self.page_plan if plan["src"] in self.checked]
-            rest = [plan for plan in self.page_plan if plan["src"] not in self.checked]
+            picked = params["picked"]
+            rest = params["rest"]
             self.progress.setMaximum(2)
-            self._write_plans(doc, picked, str(out_dir / f"{base}_selected.pdf"))
+            selected_path = str(out_dir / f"{base}_selected.pdf")
+            rest_path = str(out_dir / f"{base}_rest.pdf")
+            self._write_plans(doc, picked, selected_path)
             self.progress.setValue(1)
-            self._write_plans(doc, rest, str(out_dir / f"{base}_rest.pdf"))
+            self._write_plans(doc, rest, rest_path)
             self.progress.setValue(2)
+            written = [selected_path, rest_path]
         elif mode == "range":
             ranges = params["ranges"]
             self.progress.setMaximum(len(ranges))
             for i, (start, end) in enumerate(ranges):
                 if start >= end:
                     continue
+                path = str(out_dir / f"{base}_p{start + 1}-{end}.pdf")
                 plans = [{"src": page, "rot": 0} for page in range(start, end)]
-                self._write_plans(doc, plans, str(out_dir / f"{base}_p{start + 1}-{end}.pdf"))
+                self._write_plans(doc, plans, path)
+                written.append(path)
                 self.progress.setValue(i + 1)
         elif mode == "every":
             n = params["n"]
@@ -656,16 +717,21 @@ class PdfEditorWidget(QWidget):
             part = 1
             for start in range(0, total, n):
                 end = min(start + n, total)
+                path = str(out_dir / f"{base}_part{part}.pdf")
                 plans = [{"src": page, "rot": 0} for page in range(start, end)]
-                self._write_plans(doc, plans, str(out_dir / f"{base}_part{part}.pdf"))
+                self._write_plans(doc, plans, path)
+                written.append(path)
                 self.progress.setValue(part)
                 part += 1
         else:
             self.progress.setMaximum(total)
             for i in range(total):
-                self._write_plans(doc, [{"src": i, "rot": 0}], str(out_dir / f"{base}_p{i + 1}.pdf"))
+                path = str(out_dir / f"{base}_p{i + 1}.pdf")
+                self._write_plans(doc, [{"src": i, "rot": 0}], path)
+                written.append(path)
                 self.progress.setValue(i + 1)
-        QMessageBox.information(self, "완료", f"분할이 완료되었습니다.\n{out_dir}")
+        names = "\n".join(os.path.basename(path) for path in written)
+        QMessageBox.information(self, "완료", f"분할이 완료되었습니다.\n{out_dir}\n{names}")
 
     def _exec_merge(self):
         save_path, _ = QFileDialog.getSaveFileName(self, "병합 파일 저장", "merged.pdf", "PDF Files (*.pdf)")
@@ -679,15 +745,11 @@ class PdfEditorWidget(QWidget):
         QMessageBox.information(self, "완료", f"병합 완료:\n{save_path}")
 
     def _exec_page(self):
-        mode = self._planned_action[1]["mode"]
         doc = self.docs[self.current_index]
         save_path, _ = QFileDialog.getSaveFileName(self, "저장", "edited.pdf", "PDF Files (*.pdf)")
         if not save_path:
             return
-        if mode == "extract":
-            plans = [plan for plan in self.page_plan if plan["src"] in self.checked]
-        else:
-            plans = list(self.page_plan)
+        plans = self._planned_action[1]["plans"]
         if not plans:
             QMessageBox.warning(self, "알림", "저장할 페이지가 없습니다.")
             return

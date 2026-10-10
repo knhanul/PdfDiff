@@ -233,9 +233,13 @@ class HFViewer(QScrollArea):
         self.fit_page_btn.setToolTip('페이지에 맞춤')
         self.fit_page_btn.clicked.connect(self.fit_to_page)
 
-        self.zoom_label = QLabel(f'{int(self.scale * 100)}%')
-        self.zoom_label.setObjectName('toolbarLabel')
-        self.zoom_label.setFixedWidth(50)
+        self.zoom_label = QLineEdit(f'{int(self.scale * 100)}%')
+        self.zoom_label.setObjectName('pageSpin')
+        self.zoom_label.setFixedSize(64, 30)
+        self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.zoom_label.setStyleSheet('font-size: 12px;')
+        self.zoom_label.setToolTip('배율을 입력하세요. 예: 150')
+        self.zoom_label.editingFinished.connect(self._apply_zoom_input)
         
         # Page navigation
         self.page_nav_label = QLabel('페이지')
@@ -589,12 +593,12 @@ class HFViewer(QScrollArea):
     # ─── 줌 ───
     def zoom_in(self):
         self.scale *= 1.2
-        self.zoom_label.setText(f'{int(self.scale * 100)}%')
+        self.update_zoom_label()
         self.reload_pages()
 
     def zoom_out(self):
         self.scale /= 1.2
-        self.zoom_label.setText(f'{int(self.scale * 100)}%')
+        self.update_zoom_label()
         self.reload_pages()
 
     def fit_to_width(self):
@@ -602,7 +606,7 @@ class HFViewer(QScrollArea):
             return
         pw = self.pdf_doc.load_page(0).rect.width
         self.scale = max(100, self.viewport().width() - 40) / pw
-        self.zoom_label.setText(f'{int(self.scale * 100)}%')
+        self.update_zoom_label()
         self.reload_pages()
 
     def fit_to_page(self):
@@ -612,7 +616,31 @@ class HFViewer(QScrollArea):
         sw = max(100, self.viewport().width() - 40) / r.width
         sh = max(100, self.viewport().height() - 40) / r.height
         self.scale = min(sw, sh)
-        self.zoom_label.setText(f'{int(self.scale * 100)}%')
+        self.update_zoom_label()
+        self.reload_pages()
+
+    def update_zoom_label(self):
+        self.zoom_label.blockSignals(True)
+        self.zoom_label.setText(f'{int(round(self.scale * 100))}%')
+        self.zoom_label.blockSignals(False)
+
+    def _apply_zoom_input(self):
+        text = self.zoom_label.text().strip().replace('%', '').replace('％', '')
+        if not text:
+            self.update_zoom_label()
+            return
+        try:
+            percent = float(text)
+        except ValueError:
+            self.update_zoom_label()
+            return
+        percent = min(800.0, max(10.0, percent))
+        new_scale = percent / 100.0
+        if abs(new_scale - self.scale) < 0.001:
+            self.update_zoom_label()
+            return
+        self.scale = new_scale
+        self.update_zoom_label()
         self.reload_pages()
 
     # ─── 초기화 ───
