@@ -45,20 +45,7 @@ class PdfEditorWidget(QWidget):
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
-
-        file_head = QHBoxLayout()
-        file_head.addWidget(QLabel("불러온 PDF"))
-        file_head.addStretch()
-        btn_add = QPushButton("파일 추가")
-        btn_add.setObjectName("actionBtn")
-        btn_add.clicked.connect(self.add_files)
-        file_head.addWidget(btn_add)
-        left_layout.addLayout(file_head)
-
-        self.empty_hint = QLabel("PDF를 끌어다 놓거나 파일 추가")
-        self.empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_hint.setStyleSheet("color: #888; padding: 12px;")
-        left_layout.addWidget(self.empty_hint)
+        left_layout.setSpacing(6)
 
         self.file_list = QListWidget()
         self.file_list.setMaximumHeight(160)
@@ -66,6 +53,17 @@ class PdfEditorWidget(QWidget):
         self.file_list.currentRowChanged.connect(self.on_file_selected)
         self.file_list.model().rowsMoved.connect(self._on_file_order_changed)
         left_layout.addWidget(self.file_list)
+
+        file_btns = QHBoxLayout()
+        btn_add = QPushButton("파일 추가")
+        btn_add.setObjectName("actionBtn")
+        btn_add.clicked.connect(self.add_files)
+        btn_remove = QPushButton("파일 삭제")
+        btn_remove.clicked.connect(self.remove_selected_file)
+        file_btns.addWidget(btn_add)
+        file_btns.addWidget(btn_remove)
+        file_btns.addStretch()
+        left_layout.addLayout(file_btns)
 
         viewer = QFrame()
         viewer_layout = QVBoxLayout(viewer)
@@ -188,7 +186,6 @@ class PdfEditorWidget(QWidget):
         root.addWidget(splitter, 1)
 
         self._create_bottom_bar(root)
-        self._update_empty_hint()
 
     def _create_bottom_bar(self, parent_layout):
         bar = QFrame()
@@ -205,6 +202,7 @@ class PdfEditorWidget(QWidget):
         bl.addWidget(self.btn_focus_mode)
         parent_layout.addWidget(bar)
         self.bottom_action_bar = bar
+        bar.hide()
 
     def _create_split_tab(self):
         w = QWidget()
@@ -257,6 +255,7 @@ class PdfEditorWidget(QWidget):
             ("선택 페이지 맨 앞으로", lambda: self._move_checked("front")),
             ("선택 페이지 맨 뒤로", lambda: self._move_checked("back")),
             ("현재 구성으로 저장", lambda: self._stage_page("save")),
+            ("편집 취소", self._reset_page_edits),
         ]
         for title, handler in actions:
             btn = QPushButton(title)
@@ -296,12 +295,34 @@ class PdfEditorWidget(QWidget):
             self.file_list.addItem(item)
             if first_new is None:
                 first_new = self.file_list.count() - 1
-        self._update_empty_hint()
         if self.current_index < 0 and first_new is not None:
             self.file_list.setCurrentRow(first_new)
 
-    def _update_empty_hint(self):
-        self.empty_hint.setVisible(self.file_list.count() == 0)
+    def remove_selected_file(self):
+        row = self.file_list.currentRow()
+        if row < 0 or row >= len(self.docs):
+            QMessageBox.warning(self, "알림", "목록에서 삭제할 PDF를 선택하세요.")
+            return
+        path = self.file_paths[row]
+        try:
+            self.docs[row].close()
+        except Exception:
+            pass
+        del self.docs[row]
+        del self.file_paths[row]
+        self._thumb_cache = {key: pixmap for key, pixmap in self._thumb_cache.items() if key[0] != path}
+        self.file_list.model().blockSignals(True)
+        self.file_list.takeItem(row)
+        self.file_list.model().blockSignals(False)
+        self._shown_path = None
+        self.current_index = -1
+        self.page_plan = []
+        self.checked = set()
+        if self.file_list.count():
+            self.file_list.setCurrentRow(min(row, self.file_list.count() - 1))
+        else:
+            self.page_list.clear()
+            self._update_sel_label()
 
     def on_file_selected(self, row):
         if row < 0 or row >= len(self.docs):
@@ -519,6 +540,16 @@ class PdfEditorWidget(QWidget):
         self.page_plan = picked + rest if where == "front" else rest + picked
         self._refresh_page_thumbnails()
         self._stage_page("save")
+
+    def _reset_page_edits(self):
+        if not self._require_doc():
+            return
+        doc = self.docs[self.current_index]
+        self.page_plan = [{"src": i, "rot": 0} for i in range(doc.page_count)]
+        self.checked = set()
+        self._planned_action = None
+        self._refresh_page_thumbnails()
+        self.status_label.setText("페이지 편집을 불러온 상태로 되돌렸습니다.")
 
     def move_file_up(self):
         row = self.file_list.currentRow()

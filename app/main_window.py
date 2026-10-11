@@ -152,6 +152,15 @@ class MdiMainWindow(QMainWindow):
         self.close_tool_btn.setToolTip('현재 도구 닫기')
         self.close_tool_btn.clicked.connect(self.close_current_tool)
         header_layout.addWidget(self.close_tool_btn)
+        header_layout.addSpacing(4)
+        self.header_focus_btn = QPushButton()
+        self.header_focus_btn.setObjectName('infoBtn')
+        self.header_focus_btn.setFixedSize(36, 36)
+        self.header_focus_btn.setCheckable(True)
+        self.header_focus_btn.clicked.connect(self.toggle_sidebar)
+        header_layout.addWidget(self.header_focus_btn)
+        self.header_layout = header_layout
+        self._sync_header_focus_button()
         return header
 
     def toggle_sidebar(self):
@@ -164,6 +173,7 @@ class MdiMainWindow(QMainWindow):
             self.sidebar_animation.setEndValue(0)
             self.sidebar_animation.start()
             self.header_bar.hide()
+            self._dock_focus_button(True)
         else:
             # Exit focus mode
             self.sidebar_width = self.sidebar_expanded_width
@@ -171,7 +181,9 @@ class MdiMainWindow(QMainWindow):
             self.sidebar_animation.setStartValue(self.sidebar.width())
             self.sidebar_animation.setEndValue(self.sidebar_expanded_width)
             self.sidebar_animation.start()
+            self._dock_focus_button(False)
             self.header_bar.show()
+        self._sync_header_focus_button()
         for tool in self.tool_cache.values():
             self.update_focus_button(tool)
 
@@ -183,7 +195,42 @@ class MdiMainWindow(QMainWindow):
         button.setChecked(self.focus_mode)
         button.setToolTip(label)
         button.setAccessibleName(label)
+        button.hide()
+        self._sync_header_focus_button()
         self.update_focus_layout(tool)
+
+    def _sync_header_focus_button(self):
+        button = self.header_focus_btn
+        label = '일반 모드로 전환' if self.focus_mode else '집중 모드로 전환'
+        icon = QStyle.StandardPixmap.SP_TitleBarNormalButton if self.focus_mode else QStyle.StandardPixmap.SP_TitleBarMaxButton
+        button.setIcon(button.style().standardIcon(icon))
+        button.setChecked(self.focus_mode)
+        button.setToolTip(label)
+        button.setAccessibleName(label)
+
+    def _dock_focus_button(self, floating):
+        button = self.header_focus_btn
+        if floating:
+            button.setParent(self.right_panel)
+            button.show()
+            button.raise_()
+            self._position_focus_button()
+        else:
+            if self.header_layout.indexOf(button) < 0:
+                self.header_layout.addWidget(button)
+            button.show()
+
+    def _position_focus_button(self):
+        if not self.focus_mode:
+            return
+        button = self.header_focus_btn
+        button.move(max(8, self.right_panel.width() - button.width() - 12), 8)
+        button.raise_()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if getattr(self, 'focus_mode', False):
+            self._position_focus_button()
 
     def update_focus_layout(self, tool):
         bar = tool.bottom_action_bar
@@ -235,6 +282,8 @@ class MdiMainWindow(QMainWindow):
         width = int(value)
         self.sidebar.setMinimumWidth(width)
         self.sidebar.setMaximumWidth(width)
+        if self.focus_mode:
+            self._position_focus_button()
 
     def apply_sidebar_collapsed_state(self, collapsed):
         if collapsed:
