@@ -10,10 +10,10 @@ from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QFileDialog, QFileIconProvider, QFormLayout,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QMessageBox, QProgressBar, QPushButton, QRadioButton, QSpinBox, QSplitter,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QInputDialog,
 )
 
-from app.common.file_names import build_new_name, unique_name
+from app.common.file_names import build_new_name, direct_name, unique_name
 from app.common.loading_dialog import note_progress, style_task_progress
 from app.common.styles import COLOR_BORDER, COLOR_PRIMARY, COLOR_SIDEBAR_BG, COLOR_TEXT_PRIMARY, MODERN_QSS
 from app.common.user_prefs import load_dir, save_dir
@@ -91,8 +91,10 @@ class FileRenameWidget(QWidget):
         self.file_table.setHorizontalHeaderLabels(COLUMNS)
         self.header.clicked_all.connect(self._toggle_all)
         self.file_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.file_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.file_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.file_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
+        self.file_table.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.file_table.setShowGrid(False)
         self.file_table.setIconSize(QSize(20, 20))
         self.file_table.verticalHeader().setVisible(False)
@@ -121,7 +123,7 @@ class FileRenameWidget(QWidget):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        hint = QLabel("변경 이름에서 결과를 확인한 뒤 적용하세요. 확장자는 바뀌지 않습니다.\n결과 폴더가 없으면 원래 위치에서 이름을 바꿉니다.")
+        hint = QLabel("변경 이름을 더블클릭하거나 이름 변경을 누르면 그 파일 이름을 직접 고칠 수 있습니다.\n직접 고친 이름은 규칙을 바꿔도 유지됩니다. 칸을 비우면 규칙으로 돌아갑니다.")
         hint.setWordWrap(True)
         right_layout.addWidget(hint)
 
@@ -173,10 +175,16 @@ class FileRenameWidget(QWidget):
             self.output_dir = saved
             self.output_edit.setText(saved)
 
+        self.btn_rename = QPushButton("이름 변경")
+        self.btn_rename.setToolTip("체크한 파일 하나의 이름을 직접 입력합니다.")
+        self.btn_rename.clicked.connect(self.rename_checked)
         self.btn_apply = QPushButton("이름 적용")
         self.btn_apply.setObjectName("actionBtn")
         self.btn_apply.clicked.connect(self.apply_names)
-        right_layout.addWidget(self.btn_apply)
+        action_row = QHBoxLayout()
+        action_row.addWidget(self.btn_apply)
+        action_row.addWidget(self.btn_rename)
+        right_layout.addLayout(action_row)
         self.progress = QProgressBar()
         self.progress.setVisible(False)
         style_task_progress(self.progress)
@@ -309,7 +317,9 @@ class FileRenameWidget(QWidget):
         row = self.file_table.rowCount()
         self.file_table.insertRow(row)
         for column, item in enumerate((check, name, new_name, type_item, QTableWidgetItem(modified), folder)):
-            if column != 0:
+            if column == 2:
+                item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsEditable)
+            elif column != 0:
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.file_table.setItem(row, column, item)
 
@@ -341,28 +351,62 @@ class FileRenameWidget(QWidget):
                 continue
             src = Path(source.data(Qt.ItemDataRole.UserRole))
             if row not in checked:
-                target.setText(src.name)
+                if not target.data(Qt.ItemDataRole.UserRole + 1):
+                    target.setText(src.name)
                 target.setData(Qt.ItemDataRole.UserRole, "")
                 target.setToolTip("체크되지 않아 유지됩니다.")
                 continue
-            new_name = build_new_name(
-                src.name,
-                self.find_edit.text(),
-                self.replace_edit.text(),
-                self.prefix_edit.text(),
-                self.suffix_edit.text(),
-                number,
-                self.digits_spin.value(),
-                self.number_back.isChecked(),
-            )
-            if number is not None:
-                number += 1
+            if target.data(Qt.ItemDataRole.UserRole + 1):
+                new_name = direct_name(src.name, target.text())
+            else:
+                new_name = build_new_name(
+                    src.name,
+                    self.find_edit.text(),
+                    self.replace_edit.text(),
+                    self.prefix_edit.text(),
+                    self.suffix_edit.text(),
+                    number,
+                    self.digits_spin.value(),
+                    self.number_back.isChecked(),
+                )
+                if number is not None:
+                    number += 1
             directory = Path(self.output_dir) if self.output_dir else src.parent
             final_name = unique_name(directory, new_name, reserved, src, freeing)
             target.setText(final_name)
             target.setData(Qt.ItemDataRole.UserRole, str(directory / final_name))
             target.setToolTip(str(directory / final_name))
         self._updating = False
+
+    def rename_checked(self):
+        rows = self._checked_rows()
+        if len(rows) != 1:
+            QMessageBox.information(self, "알림", "이름을 바꿀 파일 하나만 체크하세요.\n여러 파일이면 변경 이름 칸을 더블클릭해 고칩니다.")
+            return
+        row = rows[0]
+        current = self.file_table.item(row, 2)
+        typed, ok = QInputDialog.getText(self, "이름 변경", "새 파일 이름", text=current.text() if current else "")
+        if not ok or current is None:
+            return
+        self._updating = True
+        current.setText(typed)
+        self._updating = False
+        self._accept_typed_name(current)
+
+    def _accept_typed_name(self, item):
+        source = self.file_table.item(item.row(), 1)
+        if source is None:
+            return
+        typed = item.text().strip()
+        src_name = Path(source.data(Qt.ItemDataRole.UserRole)).name
+        self._updating = True
+        if typed:
+            item.setText(direct_name(src_name, typed))
+            item.setData(Qt.ItemDataRole.UserRole + 1, True)
+        else:
+            item.setData(Qt.ItemDataRole.UserRole + 1, False)
+        self._updating = False
+        self.refresh_preview()
 
     def apply_names(self):
         self.refresh_preview()
@@ -441,7 +485,7 @@ class FileRenameWidget(QWidget):
         self.file_table.item(row, 5).setText(str(dest.parent))
 
     def _on_cell_clicked(self, row, column):
-        if column == 0 or self._updating:
+        if column in (0, 2) or self._updating:
             return
         item = self.file_table.item(row, 0)
         if item is None:
@@ -449,7 +493,12 @@ class FileRenameWidget(QWidget):
         item.setCheckState(Qt.CheckState.Unchecked if item.checkState() == Qt.CheckState.Checked else Qt.CheckState.Checked)
 
     def _on_item_changed(self, item):
-        if self._updating or item.column() != 0:
+        if self._updating:
+            return
+        if item.column() == 2:
+            self._accept_typed_name(item)
+            return
+        if item.column() != 0:
             return
         self._sync_header()
         self._update_count()

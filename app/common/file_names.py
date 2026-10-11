@@ -22,6 +22,26 @@ def build_new_name(original_name, find, replace, prefix, suffix, number=None, di
     return stem + path.suffix
 
 
+def direct_name(original_name, typed):
+    """사용자가 입력한 이름으로 바꾼다. 확장자를 생략하면 원래 확장자를 유지한다."""
+    original = Path(original_name)
+    typed = (typed or "").strip().replace("\\", "").replace("/", "")
+    if not typed:
+        return original.name
+    typed_path = Path(typed)
+    if typed_path.suffix:
+        suffix = "." + "".join(ch for ch in typed_path.suffix[1:] if ch not in INVALID_CHARS and ord(ch) >= 32)
+        stem = clean_stem(typed_path.stem)
+    else:
+        suffix = original.suffix
+        stem = clean_stem(typed)
+    if not stem:
+        stem = "이름없음"
+    if stem.upper() in RESERVED_NAMES:
+        stem += "_"
+    return stem + suffix
+
+
 def clean_stem(stem):
     cleaned = "".join(ch for ch in stem if ch not in INVALID_CHARS and ord(ch) >= 32)
     return cleaned.strip().rstrip(".")
