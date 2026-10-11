@@ -101,21 +101,23 @@ class PdfCompareWorker(QObject):
             
             # Progress signal 시간 기반 조절 (최소 0.1초 간격)
             last_progress_time = time.time()
-            progress_interval = 0.1  # 100ms
-            
+            progress_interval = 0.1
+            if total_ops <= 0:
+                self.progress.emit(1, 1)
+            else:
+                self.progress.emit(0, total_ops)
+
             for idx, (tag, i1, i2, j1, j2) in enumerate(opcodes):
-                # 안전한 종료 체크
                 if not self._is_running:
                     return
-                
+
+                current_time = time.time()
+                if current_time - last_progress_time >= progress_interval or idx + 1 == total_ops:
+                    self.progress.emit(idx + 1, total_ops)
+                    last_progress_time = current_time
+
                 if tag == 'equal':
                     continue
-                
-                # 진행률 전송 (시간 기반 - 최소 0.1초 간격)
-                current_time = time.time()
-                if current_time - last_progress_time >= progress_interval:
-                    self.progress.emit(idx, total_ops)
-                    last_progress_time = current_time
                 
                 # 하이라이트 데이터 수집
                 if tag in ('delete', 'replace'):

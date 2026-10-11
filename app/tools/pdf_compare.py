@@ -6,7 +6,8 @@ from PyQt6.QtCore import QEasingCurve, QPoint, QParallelAnimationGroup, QPropert
 from PyQt6.QtGui import QColor, QFont, QImage, QMovie, QPainter, QPen, QPixmap, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import QApplication, QDialog, QFileDialog, QFrame, QGraphicsOpacityEffect, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton, QScrollArea, QTextEdit, QVBoxLayout, QWidget
 
-from app.common.resources import get_resource_path, get_timer_gif_path
+from app.common.loading_dialog import make_overlay_progress, update_overlay_progress
+from app.common.resources import get_timer_gif_path
 from app.common.styles import COLOR_WORKSPACE_DARK, COLOR_P1, COLOR_P2, COLOR_AREA, MODERN_QSS
 from app.common.pdf_search_helper import PDFSearchHelper
 from app.common.pdf_compare_worker import CompareThreadManager
@@ -1055,6 +1056,8 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
             self.loading_gif.setText("⏳")
             self.loading_gif.setStyleSheet("font-size: 48px; background: transparent; border: none;")
 
+        self.loading_progress = make_overlay_progress(self.loading_overlay)
+
         # Bottom Action Bar
         bottom_action_bar = QFrame()
         bottom_action_bar.setObjectName('actionBar')
@@ -1145,6 +1148,8 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
         if show:
             if message:
                 self.loading_message.setText(message)
+            self.loading_progress.setRange(0, 0)
+            self.loading_progress.setFormat("진행률 계산 중")
             # Center the overlay
             x = (self.width() - self.loading_overlay.width()) // 2
             y = (self.height() - self.loading_overlay.height()) // 2
@@ -1355,7 +1360,7 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
     def _on_compare_progress(self, current, total):
         """진행률 업데이트 (오버레이 메시지 업데이트)"""
         if total > 0:
-            percent = int((current / total) * 100)
+            percent = update_overlay_progress(self.loading_progress, current, total)
             self.loading_message.setText(f"PDF 비교 중... ({percent}%)")
     
     def _on_compare_result_ready(self, result: dict):

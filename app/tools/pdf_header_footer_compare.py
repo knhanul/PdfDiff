@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QPushButton, QScrollArea, QStyle, QStyleOptionButton, QVBoxLayout, QWidget,
 )
 
+from app.common.loading_dialog import make_overlay_progress, update_overlay_progress
 from app.common.resources import get_timer_gif_path
 from app.common.styles import COLOR_PRIMARY, COLOR_WORKSPACE_DARK, COLOR_P1, COLOR_P2, COLOR_AREA, MODERN_QSS
 from app.common.pdf_search_helper import PDFSearchHelper
@@ -825,6 +826,8 @@ class HFCompareWidget(ComparisonSettingsMixin, QWidget):
             self.loading_gif.setText("⏳")
             self.loading_gif.setStyleSheet("font-size: 48px; background: transparent; border: none;")
 
+        self.loading_progress = make_overlay_progress(self.loading_overlay)
+
         # 하단 액션 바
         bar = QFrame()
         bar.setObjectName('actionBar')
@@ -1090,7 +1093,7 @@ class HFCompareWidget(ComparisonSettingsMixin, QWidget):
     def _on_compare_progress(self, current, total):
         """진행률 업데이트 (오버레이 메시지 업데이트)"""
         if total > 0:
-            percent = int((current / total) * 100)
+            percent = update_overlay_progress(self.loading_progress, current, total)
             self.loading_message.setText(f"비교 중... ({percent}%)")
     
     def _on_compare_result_ready(self, result: dict):
@@ -1330,6 +1333,8 @@ class HFCompareWidget(ComparisonSettingsMixin, QWidget):
         if show:
             if message:
                 self.loading_message.setText(message)
+            self.loading_progress.setRange(0, 0)
+            self.loading_progress.setFormat("진행률 계산 중")
             # Center the overlay
             x = (self.width() - self.loading_overlay.width()) // 2
             y = (self.height() - self.loading_overlay.height()) // 2

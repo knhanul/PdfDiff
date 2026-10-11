@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.common.styles import MODERN_QSS
+from app.common.loading_dialog import note_progress, style_task_progress
 from app.common.user_prefs import load_dir, save_dir
 
 EDITOR_OUTPUT_KEY = "output/pdf_editor"
@@ -185,6 +186,7 @@ class PdfEditorWidget(QWidget):
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
+        style_task_progress(self.progress)
         right_layout.addWidget(self.progress)
 
         splitter.addWidget(right)
@@ -776,7 +778,7 @@ class PdfEditorWidget(QWidget):
                 path = str(self._unique_path(out_dir, f"{base}_sel{i}.pdf"))
                 self._write_plans(doc, group, path)
                 written.append(path)
-                self.progress.setValue(i)
+                note_progress(self.progress, i)
         elif mode == "keep":
             picked = params["picked"]
             rest = params["rest"]
@@ -784,9 +786,9 @@ class PdfEditorWidget(QWidget):
             selected_path = str(self._unique_path(out_dir, f"{base}_selected.pdf"))
             rest_path = str(self._unique_path(out_dir, f"{base}_rest.pdf"))
             self._write_plans(doc, picked, selected_path)
-            self.progress.setValue(1)
+            note_progress(self.progress, 1)
             self._write_plans(doc, rest, rest_path)
-            self.progress.setValue(2)
+            note_progress(self.progress, 2)
             written = [selected_path, rest_path]
         elif mode == "range":
             ranges = params["ranges"]
@@ -798,7 +800,7 @@ class PdfEditorWidget(QWidget):
                 plans = [{"src": page, "rot": 0} for page in range(start, end)]
                 self._write_plans(doc, plans, path)
                 written.append(path)
-                self.progress.setValue(i + 1)
+                note_progress(self.progress, i + 1)
         elif mode == "every":
             n = params["n"]
             count = (total + n - 1) // n
@@ -810,7 +812,7 @@ class PdfEditorWidget(QWidget):
                 plans = [{"src": page, "rot": 0} for page in range(start, end)]
                 self._write_plans(doc, plans, path)
                 written.append(path)
-                self.progress.setValue(part)
+                note_progress(self.progress, part)
                 part += 1
         else:
             self.progress.setMaximum(total)
@@ -818,7 +820,7 @@ class PdfEditorWidget(QWidget):
                 path = str(self._unique_path(out_dir, f"{base}_p{i + 1}.pdf"))
                 self._write_plans(doc, [{"src": i, "rot": 0}], path)
                 written.append(path)
-                self.progress.setValue(i + 1)
+                note_progress(self.progress, i + 1)
         names = "\n".join(os.path.basename(path) for path in written)
         QMessageBox.information(self, "완료", f"분할이 완료되었습니다.\n{out_dir}\n{names}")
         return written
@@ -836,9 +838,12 @@ class PdfEditorWidget(QWidget):
         save_path = self._save_target("merged.pdf", self.file_paths[0])
         if not save_path:
             return None
+        self.progress.setVisible(True)
+        self.progress.setMaximum(max(1, len(self.docs)))
         out = pymupdf.open()
-        for doc in self.docs:
+        for index, doc in enumerate(self.docs, start=1):
             out.insert_pdf(doc)
+            note_progress(self.progress, index)
         out.save(save_path)
         out.close()
         QMessageBox.information(self, "완료", f"병합 완료:\n{save_path}")
@@ -853,7 +858,11 @@ class PdfEditorWidget(QWidget):
         save_path = self._save_target("edited.pdf", self.file_paths[self.current_index])
         if not save_path:
             return None
+        self.progress.setVisible(True)
+        self.progress.setMaximum(max(1, len(plans)))
+        self.progress.setValue(0)
         self._write_plans(doc, plans, save_path)
+        note_progress(self.progress, len(plans))
         QMessageBox.information(self, "완료", f"저장 완료:\n{save_path}")
         return [save_path]
 

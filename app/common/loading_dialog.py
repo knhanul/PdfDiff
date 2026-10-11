@@ -1,8 +1,69 @@
 import os
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEventLoop
 from PyQt6.QtGui import QMovie
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar, QApplication
 from app.common.resources import get_timer_gif_path
+from app.common.styles import COLOR_PRIMARY
+
+
+def make_overlay_progress(parent):
+    """로딩 오버레이 안의 진행률 막대."""
+    bar = QProgressBar(parent)
+    bar.setGeometry(36, 248, 328, 18)
+    bar.setTextVisible(True)
+    bar.setFormat("%p%")
+    bar.setRange(0, 0)
+    bar.setStyleSheet(f"""
+        QProgressBar {{
+            border: 1px solid #E5E5EA;
+            border-radius: 6px;
+            background: #F2F2F7;
+            text-align: center;
+            color: #1C1C1E;
+            font-size: 11px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {COLOR_PRIMARY};
+            border-radius: 5px;
+        }}
+    """)
+    return bar
+
+
+def update_overlay_progress(bar, current, total):
+    if total <= 0:
+        bar.setRange(0, 0)
+        return 0
+    percent = max(0, min(100, int(current * 100 / total)))
+    bar.setRange(0, 100)
+    bar.setFormat("%p%")
+    bar.setValue(percent)
+    return percent
+
+
+def style_task_progress(bar):
+    bar.setTextVisible(True)
+    bar.setFormat("%p%")
+    bar.setStyleSheet(f"""
+        QProgressBar {{
+            border: 1px solid #E5E5EA;
+            border-radius: 6px;
+            background: #F2F2F7;
+            text-align: center;
+            color: #1C1C1E;
+            font-size: 11px;
+            min-height: 18px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {COLOR_PRIMARY};
+            border-radius: 5px;
+        }}
+    """)
+
+
+def note_progress(bar, value):
+    bar.setValue(value)
+    QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
 
 
 class LoadingDialog(QDialog):

@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 
 from app.common.pdf_convert import SUPPORTED_EXTS, convert_to_pdf, is_supported, merge_pdfs, unique_pdf_path
 from app.common.styles import COLOR_BORDER, COLOR_PRIMARY, COLOR_SIDEBAR_BG, COLOR_TEXT_PRIMARY, MODERN_QSS
+from app.common.loading_dialog import note_progress, style_task_progress
 from app.common.user_prefs import load_dir, save_dir
 
 CREATE_OUTPUT_KEY = "output/pdf_create"
@@ -175,6 +176,7 @@ class PdfCreateWidget(QWidget):
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
+        style_task_progress(self.progress)
         right_layout.addWidget(self.progress)
 
         self.status_label = QLabel("지원 형식: hwp, hwpx, doc, docx, xls, xlsx, ppt, pptx, md, txt, 이미지")
@@ -470,7 +472,7 @@ class PdfCreateWidget(QWidget):
                 else:
                     ok += 1
                     self._add_history(f"변환 {Path(src).name}", [str(dest)])
-                self.progress.setValue(index)
+                note_progress(self.progress, index)
                 self.status_label.setText(f"진행 {index}/{len(paths)}")
         self.progress.setVisible(False)
         if failed:
@@ -490,9 +492,9 @@ class PdfCreateWidget(QWidget):
                 except Exception as error:
                     failed.append(f"{Path(src).name}: {error}")
                     self._add_history(f"실패 {Path(src).name}", [], str(error))
-                    self.progress.setValue(index)
+                    note_progress(self.progress, index)
                     return
-                self.progress.setValue(index)
+                note_progress(self.progress, index)
                 self.status_label.setText(f"진행 {index}/{len(paths)}")
             dest = unique_pdf_path(self._target_dir(paths[0]), f"{Path(paths[0]).stem}_병합")
             merge_pdfs(pdfs, dest)
