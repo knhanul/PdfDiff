@@ -7,15 +7,15 @@ from pathlib import Path
 from PyQt6.QtCore import QEvent, QFileInfo, QSize, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QCheckBox, QFileDialog, QFileIconProvider, QFormLayout,
-    QFrame, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+    QAbstractItemView, QButtonGroup, QCheckBox, QFileDialog, QFileIconProvider,
+    QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QMessageBox, QProgressBar, QPushButton, QRadioButton, QScrollArea, QSpinBox, QSplitter,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QInputDialog,
 )
 
 from app.common.file_names import build_new_name, direct_name, unique_name
 from app.common.loading_dialog import note_progress, style_task_progress
-from app.common.styles import COLOR_BORDER, COLOR_PRIMARY, COLOR_SIDEBAR_BG, COLOR_TEXT_PRIMARY, MODERN_QSS
+from app.common.styles import COLOR_BORDER, COLOR_PRIMARY, COLOR_SIDEBAR_BG, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, MODERN_QSS
 from app.common.user_prefs import load_dir, save_dir
 
 OUTPUT_KEY = "output/file_rename"
@@ -126,100 +126,85 @@ class FileRenameWidget(QWidget):
         right_layout.setSpacing(8)
 
         rules = QWidget()
+        rules.setObjectName("rulePane")
         rules_layout = QVBoxLayout(rules)
-        rules_layout.setContentsMargins(0, 0, 4, 0)
-        rules_layout.setSpacing(8)
-        hint = QLabel("변경 이름은 바로 미리보기입니다. 칸을 더블클릭하면 그 파일만 직접 고치고, 비우면 규칙으로 돌아갑니다.")
+        rules_layout.setContentsMargins(2, 0, 8, 8)
+        rules_layout.setSpacing(10)
+        hint = QLabel("왼쪽 변경 이름이 바로 미리보기입니다. 칸을 더블클릭하면 그 파일만 직접 고칩니다.")
+        hint.setObjectName("ruleHint")
         hint.setWordWrap(True)
         rules_layout.addWidget(hint)
 
-        replace_box = QGroupBox("글자")
-        replace_form = QFormLayout(replace_box)
         self.find_edit = QLineEdit()
         self.find_edit.setPlaceholderText("예: _최종")
         self.replace_edit = QLineEdit()
-        self.replace_edit.setPlaceholderText("비우면 그 글자를 삭제")
+        self.replace_edit.setPlaceholderText("비우면 삭제")
         self.delete_edit = QLineEdit()
-        self.delete_edit.setPlaceholderText("이름에서 이 글자를 삭제")
-        replace_form.addRow("찾을 글자", self.find_edit)
-        replace_form.addRow("바꿀 글자", self.replace_edit)
-        replace_form.addRow("지울 글자", self.delete_edit)
-        rules_layout.addWidget(replace_box)
+        self.delete_edit.setPlaceholderText("이 글자를 이름에서 삭제")
+        text_card, text_layout = self._rule_card("1", "글자")
+        text_row = QHBoxLayout()
+        text_row.addLayout(self._field_box("찾을 글자", self.find_edit))
+        text_row.addLayout(self._field_box("바꿀 글자", self.replace_edit))
+        text_layout.addLayout(text_row)
+        text_layout.addLayout(self._field_box("지울 글자", self.delete_edit))
+        rules_layout.addWidget(text_card)
 
-        add_box = QGroupBox("앞뒤와 정리")
-        add_layout = QVBoxLayout(add_box)
-        pair = QHBoxLayout()
         self.prefix_edit = QLineEdit()
-        self.prefix_edit.setPlaceholderText("이름 앞에 붙일 글자")
+        self.prefix_edit.setPlaceholderText("앞에 붙일 글자")
         self.suffix_edit = QLineEdit()
-        self.suffix_edit.setPlaceholderText("이름 뒤에 붙일 글자")
-        pair.addWidget(QLabel("앞"))
-        pair.addWidget(self.prefix_edit, 1)
-        pair.addWidget(QLabel("뒤"))
-        pair.addWidget(self.suffix_edit, 1)
-        add_layout.addLayout(pair)
+        self.suffix_edit.setPlaceholderText("뒤에 붙일 글자")
         self.collapse_check = QCheckBox("연속된 공백, 밑줄, 붙임표를 하나로")
         self.collapse_check.setToolTip("보고__서  1 은 보고_서 1 이 됩니다.")
+        add_card, add_layout = self._rule_card("2", "붙이기")
+        add_row = QHBoxLayout()
+        add_row.addLayout(self._field_box("앞", self.prefix_edit))
+        add_row.addLayout(self._field_box("뒤", self.suffix_edit))
+        add_layout.addLayout(add_row)
         add_layout.addWidget(self.collapse_check)
-        rules_layout.addWidget(add_box)
+        rules_layout.addWidget(add_card)
 
-        date_box = QGroupBox("날짜")
-        date_layout = QVBoxLayout(date_box)
-        self.date_check = QCheckBox("날짜 넣기")
-        date_layout.addWidget(self.date_check)
-        kind_row = QHBoxLayout()
+        self.date_check = QCheckBox("사용")
         self.date_today = QRadioButton("오늘")
         self.date_modified = QRadioButton("수정일")
         self.date_today.setChecked(True)
-        self.date_kind_group = QButtonGroup(self)
-        self.date_kind_group.addButton(self.date_today)
-        self.date_kind_group.addButton(self.date_modified)
-        kind_row.addWidget(QLabel("기준"))
-        kind_row.addWidget(self.date_today)
-        kind_row.addWidget(self.date_modified)
-        kind_row.addStretch()
-        date_layout.addLayout(kind_row)
-        place_row = QHBoxLayout()
         self.date_front = QRadioButton("앞")
         self.date_back = QRadioButton("뒤")
         self.date_front.setChecked(True)
+        self.date_kind_group = QButtonGroup(self)
+        self.date_kind_group.addButton(self.date_today)
+        self.date_kind_group.addButton(self.date_modified)
         self.date_place_group = QButtonGroup(self)
         self.date_place_group.addButton(self.date_front)
         self.date_place_group.addButton(self.date_back)
-        place_row.addWidget(QLabel("위치"))
-        place_row.addWidget(self.date_front)
-        place_row.addWidget(self.date_back)
-        place_row.addStretch()
-        date_layout.addLayout(place_row)
-        rules_layout.addWidget(date_box)
+        date_card, date_layout = self._rule_card("3", "날짜", self.date_check)
+        date_options = QHBoxLayout()
+        date_options.addLayout(self._field_box("기준", self._segment_bar(self.date_today, self.date_modified)))
+        date_options.addLayout(self._field_box("위치", self._segment_bar(self.date_front, self.date_back)))
+        date_layout.addLayout(date_options)
+        rules_layout.addWidget(date_card)
 
-        number_box = QGroupBox("번호")
-        number_layout = QVBoxLayout(number_box)
-        self.number_check = QCheckBox("번호 붙이기")
-        number_layout.addWidget(self.number_check)
-        spin_row = QHBoxLayout()
+        self.number_check = QCheckBox("사용")
         self.start_spin = QSpinBox()
         self.start_spin.setRange(0, 999999)
         self.start_spin.setValue(1)
+        self.start_spin.setFixedWidth(88)
         self.digits_spin = QSpinBox()
         self.digits_spin.setRange(1, 6)
         self.digits_spin.setValue(3)
+        self.digits_spin.setFixedWidth(72)
         self.number_front = QRadioButton("앞")
         self.number_back = QRadioButton("뒤")
         self.number_front.setChecked(True)
         self.number_group = QButtonGroup(self)
         self.number_group.addButton(self.number_front)
         self.number_group.addButton(self.number_back)
-        spin_row.addWidget(QLabel("시작"))
-        spin_row.addWidget(self.start_spin)
-        spin_row.addWidget(QLabel("자릿수"))
-        spin_row.addWidget(self.digits_spin)
-        spin_row.addWidget(QLabel("위치"))
-        spin_row.addWidget(self.number_front)
-        spin_row.addWidget(self.number_back)
-        spin_row.addStretch()
-        number_layout.addLayout(spin_row)
-        rules_layout.addWidget(number_box)
+        number_card, number_layout = self._rule_card("4", "번호", self.number_check)
+        number_options = QHBoxLayout()
+        number_options.addLayout(self._field_box("시작", self.start_spin))
+        number_options.addLayout(self._field_box("자릿수", self.digits_spin))
+        number_options.addLayout(self._field_box("위치", self._segment_bar(self.number_front, self.number_back)))
+        number_layout.addLayout(number_options)
+        rules_layout.addWidget(number_card)
         rules_layout.addStretch()
 
         scroll = QScrollArea()
@@ -267,19 +252,61 @@ class FileRenameWidget(QWidget):
         self.history_list.setMinimumHeight(96)
         self.history_list.itemDoubleClicked.connect(self.open_history_item)
         right_layout.addWidget(self.history_list)
-        right.setStyleSheet(f"""
-            QGroupBox {{
-                font-weight: 600;
-                border: 1px solid {COLOR_BORDER};
-                border-radius: 8px;
-                margin-top: 8px;
-                padding: 10px 8px 8px 8px;
+        rules.setStyleSheet(f"""
+            QWidget#rulePane {{
+                background: transparent;
             }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 4px;
-                color: {COLOR_PRIMARY};
+            QLabel#ruleHint {{
+                color: {COLOR_TEXT_MUTED};
+                font-size: 12px;
+            }}
+            QFrame#ruleCard {{
+                background: white;
+                border: 1px solid #FFD4A8;
+                border-radius: 12px;
+            }}
+            QLabel#stepBadge {{
+                background: {COLOR_PRIMARY};
+                color: white;
+                border-radius: 11px;
+                font-size: 11px;
+                font-weight: 700;
+            }}
+            QLabel#ruleTitle {{
+                font-size: 14px;
+                font-weight: 700;
+            }}
+            QLabel#fieldLabel {{
+                color: {COLOR_TEXT_MUTED};
+                font-size: 11px;
+                font-weight: 600;
+            }}
+            QFrame#segmentBar {{
+                background: #F2F2F7;
+                border-radius: 8px;
+            }}
+            QRadioButton#segment {{
+                background: transparent;
+                color: {COLOR_TEXT_PRIMARY};
+                border: none;
+                border-radius: 8px;
+                padding: 5px 14px;
+                spacing: 0px;
+            }}
+            QRadioButton#segment::indicator {{
+                width: 0px;
+                height: 0px;
+            }}
+            QRadioButton#segment:checked {{
+                background: {COLOR_PRIMARY};
+                color: white;
+            }}
+            QRadioButton#segment:checked:disabled {{
+                background: #E5E5EA;
+                color: {COLOR_TEXT_MUTED};
+            }}
+            QRadioButton#segment:disabled {{
+                color: {COLOR_TEXT_MUTED};
             }}
         """)
         splitter.addWidget(right)
@@ -303,6 +330,47 @@ class FileRenameWidget(QWidget):
         self.number_front.toggled.connect(self.refresh_preview)
         self._toggle_number(False)
         self._toggle_date(False)
+
+    def _rule_card(self, step, title, extra=None):
+        card = QFrame()
+        card.setObjectName("ruleCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(8)
+        head = QHBoxLayout()
+        badge = QLabel(step)
+        badge.setObjectName("stepBadge")
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setFixedSize(22, 22)
+        name = QLabel(title)
+        name.setObjectName("ruleTitle")
+        head.addWidget(badge)
+        head.addWidget(name, 1)
+        if extra is not None:
+            head.addWidget(extra)
+        layout.addLayout(head)
+        return card, layout
+
+    def _field_box(self, label, editor):
+        box = QVBoxLayout()
+        box.setSpacing(4)
+        caption = QLabel(label)
+        caption.setObjectName("fieldLabel")
+        box.addWidget(caption)
+        box.addWidget(editor)
+        return box
+
+    def _segment_bar(self, *buttons):
+        bar = QFrame()
+        bar.setObjectName("segmentBar")
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(2, 2, 2, 2)
+        row.setSpacing(0)
+        for button in buttons:
+            button.setObjectName("segment")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            row.addWidget(button)
+        return bar
 
     def _toggle_date(self, checked):
         for widget in (self.date_today, self.date_modified, self.date_front, self.date_back):
