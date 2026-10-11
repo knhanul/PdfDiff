@@ -8,7 +8,7 @@ from app.common.resources import get_timer_gif_path
 class LoadingDialog(QDialog):
     """작업 진행 중을 표시하는 로딩 다이얼로그
     
-    assets/nuni_timer.gif 애니메이션을 사용하여 시간이 걸리는 작업 수행 중
+    assets/nuni_icon_orange_spin.gif 애니메이션을 사용하여 시간이 걸리는 작업 수행 중
     사용자에게 현재 작업 진행 중임을 알립니다.
     """
     

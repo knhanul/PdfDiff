@@ -91,12 +91,16 @@ def get_icon_path():
 
 
 def get_timer_gif_path():
-    """로딩 다이얼로그용 타이머 GIF 경로 반환"""
-    gif_path = os.path.join(_runtime_base_path(), SETTINGS['ASSET_DIR'], 'nuni_timer_w.gif')
-    if os.path.exists(gif_path):
-        return gif_path
-    # Fallback to direct assets path
-    fallback_path = os.path.join(SETTINGS['BASE_DIR'], 'assets', 'nuni_timer_w.gif')
-    if os.path.exists(fallback_path):
-        return fallback_path
+    """시간이 걸리는 작업 표시용 GIF 경로."""
+    name = "nuni_icon_orange_spin.gif"
+    candidates = [
+        os.path.join(_runtime_base_path(), "assets", name),
+        os.path.join(SETTINGS["BASE_DIR"], "assets", name),
+        os.path.join(_runtime_base_path(), SETTINGS["ASSET_DIR"], name),
+        os.path.join(_runtime_base_path(), SETTINGS["ASSET_DIR"], "nuni_timer_w.gif"),
+        os.path.join(SETTINGS["BASE_DIR"], "assets", "nuni_timer_w.gif"),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
     return None

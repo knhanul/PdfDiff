@@ -810,7 +810,7 @@ class HFCompareWidget(ComparisonSettingsMixin, QWidget):
         """)
         self.loading_message.setGeometry(0, 210, 400, 30)
         
-        # Loading GIF (nuni_timer_w.gif)
+        # Loading GIF (nuni_icon_orange_spin.gif)
         self.loading_gif = QLabel(self.loading_overlay)
         self.loading_gif.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.loading_gif.setFixedSize(160, 160)
