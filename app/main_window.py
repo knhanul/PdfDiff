@@ -404,6 +404,16 @@ class MdiMainWindow(QMainWindow):
                 'enabled': True,
                 'icon': '📝',
             },
+            {
+                'key': 'file_rename',
+                'menu_title': '파일이름',
+                'window_title': '파일 이름 관리',
+                'module_path': 'app.tools.file_rename',
+                'class_name': 'FileRenameWidget',
+                'singleton': True,
+                'enabled': True,
+                'icon': '🏷️',
+            },
         ]
         self.tool_definitions = tool_definitions
 
