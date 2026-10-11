@@ -42,6 +42,21 @@ def collect_images(path, include_thumb=False):
     return [found[xref] for xref in order]
 
 
+def extract_pdf_text(path):
+    """페이지 순서대로 글자를 모아 반환한다."""
+    doc = pymupdf.open(path)
+    try:
+        if doc.is_encrypted and not doc.authenticate(""):
+            raise RuntimeError("암호가 걸린 PDF는 글자를 추출할 수 없습니다.")
+        parts = []
+        for index, page in enumerate(doc, start=1):
+            text = (page.get_text("text") or "").rstrip()
+            parts.append(f"----- {index} 페이지 -----\n{text}")
+        return "\n\n".join(parts).strip()
+    finally:
+        doc.close()
+
+
 def save_image(doc, xref, dest):
     info = doc.extract_image(xref)
     raw = info.get("image") if info else None

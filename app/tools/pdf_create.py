@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.common.pdf_convert import SUPPORTED_EXTS, convert_to_pdf, is_supported, merge_pdfs, unique_pdf_path
-from app.common.pdf_images import collect_images, save_image
+from app.common.pdf_images import collect_images, extract_pdf_text, save_image
 from app.common.styles import COLOR_BORDER, COLOR_PRIMARY, COLOR_SIDEBAR_BG, COLOR_TEXT_PRIMARY, MODERN_QSS
 from app.common.loading_dialog import note_progress, style_task_progress
 from app.common.user_prefs import load_dir, save_dir
@@ -144,7 +144,7 @@ class PdfCreateWidget(QWidget):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        hint = QLabel("불러온 파일은 모두 체크됩니다. PDF도 목록에 올라갑니다.\n병합을 체크하면 PDF를 포함해 한 파일로 합치고, 이미지 추출은 체크한 PDF의 그림을 저장합니다.")
+        hint = QLabel("불러온 파일은 모두 체크됩니다. PDF도 목록에 올라갑니다.\n병합을 체크하면 한 파일로 합치고, 이미지 추출과 글자 추출은 체크한 PDF에서 저장합니다.")
         hint.setWordWrap(True)
         right_layout.addWidget(hint)
 
@@ -174,9 +174,13 @@ class PdfCreateWidget(QWidget):
         self.btn_extract = QPushButton("이미지 추출")
         self.btn_extract.setToolTip("체크한 PDF에서 이미지를 저장합니다.")
         self.btn_extract.clicked.connect(self.extract_images)
+        self.btn_text = QPushButton("글자 추출")
+        self.btn_text.setToolTip("체크한 PDF의 글자를 텍스트 파일로 저장합니다.")
+        self.btn_text.clicked.connect(self.extract_text)
         action_row.addWidget(self.btn_convert)
         action_row.addWidget(self.merge_check)
         action_row.addWidget(self.btn_extract)
+        action_row.addWidget(self.btn_text)
         right_layout.addLayout(action_row)
 
         self.progress = QProgressBar()
@@ -457,7 +461,7 @@ class PdfCreateWidget(QWidget):
         others = [src for src in paths if Path(src).suffix.lower() != ".pdf"]
         skipped = len(paths) - len(others)
         if not others:
-            QMessageBox.information(self, "알림", "PDF만 체크되어 있습니다.\n한 개 파일로 병합을 체크하거나 이미지 추출을 사용하세요.")
+            QMessageBox.information(self, "알림", "PDF만 체크되어 있습니다.\n한 개 파일로 병합을 체크하거나 이미지 추출, 글자 추출을 사용하세요.")
             return
         self.progress.setVisible(True)
         self.progress.setMaximum(len(others))
@@ -475,7 +479,7 @@ class PdfCreateWidget(QWidget):
             note_progress(self.progress, index)
             self.status_label.setText(f"진행 {index}/{len(others)}")
         self.progress.setVisible(False)
-        extra = f"\nPDF {skipped}개는 병합 또는 이미지 추출에서 처리됩니다." if skipped else ""
+        extra = f"\nPDF {skipped}개는 병합, 이미지 추출, 글자 추출에서 처리됩니다." if skipped else ""
         if failed:
             QMessageBox.warning(self, "변환 결과", f"성공 {ok}개, 실패 {len(failed)}개{extra}\n\n" + "\n".join(failed[:8]))
         else:
@@ -549,6 +553,53 @@ class PdfCreateWidget(QWidget):
         else:
             QMessageBox.information(self, "추출 결과", f"{len(saved)}개 이미지를 저장했습니다.")
         self.status_label.setText(f"이미지 {len(saved)}개, 실패 {len(failed)}개")
+
+    def extract_text(self):
+        pdfs = [src for src in self._checked_paths() if Path(src).suffix.lower() == ".pdf"]
+        if not pdfs:
+            QMessageBox.warning(self, "알림", "글자를 추출할 PDF를 체크하세요.")
+            return
+        self.progress.setVisible(True)
+        self.progress.setMaximum(len(pdfs))
+        saved = []
+        failed = []
+        empty = 0
+        for index, src in enumerate(pdfs, start=1):
+            try:
+                text = extract_pdf_text(src)
+                if not text or not any(line.strip() and not line.startswith("----- ") for line in text.splitlines()):
+                    empty += 1
+                    self._add_history(f"글자 없음 {Path(src).name}", [], "추출된 글자가 없습니다.")
+                else:
+                    dest = self._unique_text_path(src)
+                    dest.write_text(text + "\n", encoding="utf-8")
+                    saved.append(str(dest))
+            except Exception as error:
+                failed.append(f"{Path(src).name}: {error}")
+                self._add_history(f"실패 {Path(src).name}", [], str(error))
+            note_progress(self.progress, index)
+            self.status_label.setText(f"글자 추출 {index}/{len(pdfs)}")
+        self.progress.setVisible(False)
+        if saved:
+            self._add_history(f"글자 추출 {len(saved)}개", saved)
+        if failed:
+            QMessageBox.warning(self, "추출 결과", f"성공 {len(saved)}개, 실패 {len(failed)}개\n\n" + "\n".join(failed[:8]))
+        elif not saved:
+            QMessageBox.information(self, "추출 결과", "체크한 PDF에서 글자를 찾지 못했습니다.")
+        else:
+            QMessageBox.information(self, "추출 결과", f"{len(saved)}개 텍스트 파일을 저장했습니다.")
+        self.status_label.setText(f"글자 {len(saved)}개, 없음 {empty}개, 실패 {len(failed)}개")
+
+    def _unique_text_path(self, src):
+        directory = Path(self._target_dir(src))
+        directory.mkdir(parents=True, exist_ok=True)
+        stem = Path(src).stem
+        candidate = directory / f"{stem}.txt"
+        number = 2
+        while candidate.exists():
+            candidate = directory / f"{stem}_{number}.txt"
+            number += 1
+        return candidate
 
     def _unique_image_path(self, src, image, index):
         directory = Path(self._target_dir(src))
