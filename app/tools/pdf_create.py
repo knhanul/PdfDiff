@@ -3,6 +3,8 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+import pymupdf
+
 from PyQt6.QtCore import QEvent, QFileInfo, QSize, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
@@ -13,6 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.common.pdf_convert import SUPPORTED_EXTS, convert_to_pdf, is_supported, merge_pdfs, unique_pdf_path
+from app.common.pdf_images import collect_images, save_image
 from app.common.styles import COLOR_BORDER, COLOR_PRIMARY, COLOR_SIDEBAR_BG, COLOR_TEXT_PRIMARY, MODERN_QSS
 from app.common.loading_dialog import note_progress, style_task_progress
 from app.common.user_prefs import load_dir, save_dir
@@ -141,7 +144,7 @@ class PdfCreateWidget(QWidget):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        hint = QLabel("불러온 파일은 모두 체크됩니다. 변환하지 않을 파일은 체크를 끄세요.\n체크한 파일만 PDF로 만들고, 행을 클릭해도 하이라이트되지 않습니다.")
+        hint = QLabel("불러온 파일은 모두 체크됩니다. PDF도 목록에 올라갑니다.\n병합을 체크하면 PDF를 포함해 한 파일로 합치고, 이미지 추출은 체크한 PDF의 그림을 저장합니다.")
         hint.setWordWrap(True)
         right_layout.addWidget(hint)
 
@@ -166,12 +169,14 @@ class PdfCreateWidget(QWidget):
         self.btn_convert = QPushButton("변환 실행")
         self.btn_convert.setObjectName("actionBtn")
         self.btn_convert.clicked.connect(self.convert_checked)
-        self.merge_toggle = QPushButton("한 개 파일로 병합")
-        self.merge_toggle.setCheckable(True)
-        self.merge_toggle.setToolTip("켜면 체크한 파일을 목록 순서대로 하나의 PDF로 합칩니다.")
-        self.merge_toggle.toggled.connect(self._style_merge_toggle)
+        self.merge_check = QCheckBox("한 개 파일로 병합")
+        self.merge_check.setToolTip("체크하면 체크한 파일을 목록 순서대로 하나의 PDF로 합칩니다. PDF는 그대로 포함됩니다.")
+        self.btn_extract = QPushButton("이미지 추출")
+        self.btn_extract.setToolTip("체크한 PDF에서 이미지를 저장합니다.")
+        self.btn_extract.clicked.connect(self.extract_images)
         action_row.addWidget(self.btn_convert)
-        action_row.addWidget(self.merge_toggle)
+        action_row.addWidget(self.merge_check)
+        action_row.addWidget(self.btn_extract)
         right_layout.addLayout(action_row)
 
         self.progress = QProgressBar()
@@ -179,7 +184,7 @@ class PdfCreateWidget(QWidget):
         style_task_progress(self.progress)
         right_layout.addWidget(self.progress)
 
-        self.status_label = QLabel("지원 형식: hwp, hwpx, doc, docx, xls, xlsx, ppt, pptx, md, txt, 이미지")
+        self.status_label = QLabel("지원 형식: pdf, hwp, hwpx, doc, docx, xls, xlsx, ppt, pptx, md, txt, 이미지")
         self.status_label.setWordWrap(True)
         right_layout.addWidget(self.status_label)
         right_layout.addWidget(QLabel("작업 이력"))
@@ -192,7 +197,6 @@ class PdfCreateWidget(QWidget):
         self.splitter.setStretchFactor(1, 13)
         root.addWidget(self.splitter, 1)
         self._create_bottom_bar(root)
-        self._style_merge_toggle(False)
 
     def _style_file_table(self):
         self.file_table.setStyleSheet(f"""
@@ -233,14 +237,6 @@ class PdfCreateWidget(QWidget):
                 border: 1.5px solid {COLOR_PRIMARY};
             }}
         """)
-
-    def _style_merge_toggle(self, checked):
-        if checked:
-            self.merge_toggle.setStyleSheet(
-                f"background:{COLOR_PRIMARY}; color:white; border:none; border-radius:10px; padding:8px 14px; font-weight:600;"
-            )
-        else:
-            self.merge_toggle.setStyleSheet("")
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -455,50 +451,117 @@ class PdfCreateWidget(QWidget):
         if not paths:
             QMessageBox.warning(self, "알림", "PDF로 만들 파일을 체크하세요.")
             return
+        if self.merge_check.isChecked():
+            self._convert_merged(paths)
+            return
+        others = [src for src in paths if Path(src).suffix.lower() != ".pdf"]
+        skipped = len(paths) - len(others)
+        if not others:
+            QMessageBox.information(self, "알림", "PDF만 체크되어 있습니다.\n한 개 파일로 병합을 체크하거나 이미지 추출을 사용하세요.")
+            return
         self.progress.setVisible(True)
-        self.progress.setMaximum(len(paths))
+        self.progress.setMaximum(len(others))
         ok = 0
         failed = []
-        if self.merge_toggle.isChecked():
-            self._convert_merged(paths, failed)
-            ok = 0 if failed else 1
-        else:
-            for index, src in enumerate(paths, start=1):
-                try:
-                    dest = convert_to_pdf(src, self._target_dir(src))
-                except Exception as error:
-                    failed.append(f"{Path(src).name}: {error}")
-                    self._add_history(f"실패 {Path(src).name}", [], str(error))
-                else:
-                    ok += 1
-                    self._add_history(f"변환 {Path(src).name}", [str(dest)])
-                note_progress(self.progress, index)
-                self.status_label.setText(f"진행 {index}/{len(paths)}")
+        for index, src in enumerate(others, start=1):
+            try:
+                dest = convert_to_pdf(src, self._target_dir(src))
+            except Exception as error:
+                failed.append(f"{Path(src).name}: {error}")
+                self._add_history(f"실패 {Path(src).name}", [], str(error))
+            else:
+                ok += 1
+                self._add_history(f"변환 {Path(src).name}", [str(dest)])
+            note_progress(self.progress, index)
+            self.status_label.setText(f"진행 {index}/{len(others)}")
         self.progress.setVisible(False)
+        extra = f"\nPDF {skipped}개는 병합 또는 이미지 추출에서 처리됩니다." if skipped else ""
         if failed:
-            QMessageBox.warning(self, "변환 결과", f"성공 {ok}개, 실패 {len(failed)}개\n\n" + "\n".join(failed[:8]))
-        elif self.merge_toggle.isChecked():
-            QMessageBox.information(self, "변환 결과", "체크한 파일을 하나의 PDF로 저장했습니다.")
+            QMessageBox.warning(self, "변환 결과", f"성공 {ok}개, 실패 {len(failed)}개{extra}\n\n" + "\n".join(failed[:8]))
         else:
-            QMessageBox.information(self, "변환 결과", f"{ok}개 파일을 PDF로 저장했습니다.")
+            QMessageBox.information(self, "변환 결과", f"{ok}개 파일을 PDF로 저장했습니다.{extra}")
         self.status_label.setText(f"성공 {ok}개, 실패 {len(failed)}개")
 
-    def _convert_merged(self, paths, failed):
+    def _convert_merged(self, paths):
+        self.progress.setVisible(True)
+        self.progress.setMaximum(len(paths))
+        failed = []
         with tempfile.TemporaryDirectory() as temp_dir:
             pdfs = []
             for index, src in enumerate(paths, start=1):
                 try:
-                    pdfs.append(str(convert_to_pdf(src, temp_dir)))
+                    if Path(src).suffix.lower() == ".pdf":
+                        pdfs.append(src)
+                    else:
+                        pdfs.append(str(convert_to_pdf(src, temp_dir)))
                 except Exception as error:
                     failed.append(f"{Path(src).name}: {error}")
                     self._add_history(f"실패 {Path(src).name}", [], str(error))
                     note_progress(self.progress, index)
+                    self.progress.setVisible(False)
+                    QMessageBox.warning(self, "변환 결과", f"성공 0개, 실패 {len(failed)}개\n\n" + "\n".join(failed[:8]))
                     return
                 note_progress(self.progress, index)
                 self.status_label.setText(f"진행 {index}/{len(paths)}")
             dest = unique_pdf_path(self._target_dir(paths[0]), f"{Path(paths[0]).stem}_병합")
             merge_pdfs(pdfs, dest)
             self._add_history(f"병합 {len(pdfs)}개", [str(dest)])
+        self.progress.setVisible(False)
+        QMessageBox.information(self, "변환 결과", "체크한 파일을 하나의 PDF로 저장했습니다.")
+        self.status_label.setText("성공 1개, 실패 0개")
+
+    def extract_images(self):
+        pdfs = [src for src in self._checked_paths() if Path(src).suffix.lower() == ".pdf"]
+        if not pdfs:
+            QMessageBox.warning(self, "알림", "이미지를 추출할 PDF를 체크하세요.")
+            return
+        self.progress.setVisible(True)
+        self.progress.setMaximum(len(pdfs))
+        saved = []
+        failed = []
+        for index, src in enumerate(pdfs, start=1):
+            doc = None
+            try:
+                images = collect_images(src)
+                if not images:
+                    self._add_history(f"이미지 없음 {Path(src).name}", [])
+                else:
+                    doc = pymupdf.open(src)
+                    for image_index, image in enumerate(images, start=1):
+                        dest = self._unique_image_path(src, image, image_index)
+                        save_image(doc, image["xref"], dest)
+                        saved.append(str(dest))
+            except Exception as error:
+                failed.append(f"{Path(src).name}: {error}")
+                self._add_history(f"실패 {Path(src).name}", [], str(error))
+            finally:
+                if doc is not None:
+                    doc.close()
+            note_progress(self.progress, index)
+            self.status_label.setText(f"이미지 추출 {index}/{len(pdfs)}")
+        self.progress.setVisible(False)
+        if saved:
+            self._add_history(f"이미지 추출 {len(saved)}개", saved)
+        if failed:
+            QMessageBox.warning(self, "추출 결과", f"성공 {len(saved)}개, 실패 {len(failed)}개\n\n" + "\n".join(failed[:8]))
+        elif not saved:
+            QMessageBox.information(self, "추출 결과", "체크한 PDF에서 이미지를 찾지 못했습니다.")
+        else:
+            QMessageBox.information(self, "추출 결과", f"{len(saved)}개 이미지를 저장했습니다.")
+        self.status_label.setText(f"이미지 {len(saved)}개, 실패 {len(failed)}개")
+
+    def _unique_image_path(self, src, image, index):
+        directory = Path(self._target_dir(src))
+        directory.mkdir(parents=True, exist_ok=True)
+        page = image["pages"][0]
+        stem = f"{Path(src).stem}_p{page}_{index}"
+        ext = image.get("ext") or "png"
+        candidate = directory / f"{stem}.{ext}"
+        number = 2
+        while candidate.exists():
+            candidate = directory / f"{stem}_{number}.{ext}"
+            number += 1
+        return candidate
 
     def _add_history(self, summary, paths, detail=""):
         stamp = datetime.now().strftime("%H:%M:%S")

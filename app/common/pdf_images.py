@@ -3,7 +3,7 @@ from pathlib import Path
 import pymupdf
 
 
-def collect_images(path):
+def collect_images(path, include_thumb=False):
     """PDF에 포함된 이미지를 페이지 순서로 모은다. 같은 이미지는 한 번만 담는다."""
     doc = pymupdf.open(path)
     found = {}
@@ -34,7 +34,7 @@ def collect_images(path):
                     "width": int(info.get("width") or 0),
                     "height": int(info.get("height") or 0),
                     "nbytes": len(raw),
-                    "thumb": _thumbnail(doc, xref),
+                    "thumb": _thumbnail(doc, xref) if include_thumb else b"",
                 }
                 order.append(xref)
     finally:

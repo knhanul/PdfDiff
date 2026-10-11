@@ -13,7 +13,8 @@ TEXT_EXTS = {".txt", ".csv", ".log"}
 MARKDOWN_EXTS = {".md", ".markdown"}
 XML_OFFICE_EXTS = {".docx", ".xlsx", ".pptx", ".hwpx"}
 EXTERNAL_EXTS = {".doc", ".xls", ".ppt", ".hwp", ".rtf", ".odt", ".ods", ".odp"}
-SUPPORTED_EXTS = IMAGE_EXTS | TEXT_EXTS | MARKDOWN_EXTS | XML_OFFICE_EXTS | EXTERNAL_EXTS
+PDF_EXTS = {".pdf"}
+SUPPORTED_EXTS = IMAGE_EXTS | TEXT_EXTS | MARKDOWN_EXTS | XML_OFFICE_EXTS | EXTERNAL_EXTS | PDF_EXTS
 
 A4 = (595.0, 842.0)
 
