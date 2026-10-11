@@ -404,6 +404,16 @@ class MdiMainWindow(QMainWindow):
                 'enabled': True,
                 'icon': '📝',
             },
+            {
+                'key': 'pdf_image_extract',
+                'menu_title': '이미지 추출',
+                'window_title': 'PDF 이미지 추출',
+                'module_path': 'app.tools.pdf_image_extract',
+                'class_name': 'PdfImageExtractWidget',
+                'singleton': True,
+                'enabled': True,
+                'icon': '🖼️',
+            },
         ]
         self.tool_definitions = tool_definitions
 
