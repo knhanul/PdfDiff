@@ -394,6 +394,16 @@ class MdiMainWindow(QMainWindow):
                 'enabled': True,
                 'icon': '✏️',
             },
+            {
+                'key': 'pdf_create',
+                'menu_title': 'PDF 생성',
+                'window_title': 'PDF 생성',
+                'module_path': 'app.tools.pdf_create',
+                'class_name': 'PdfCreateWidget',
+                'singleton': True,
+                'enabled': True,
+                'icon': '📝',
+            },
         ]
         self.tool_definitions = tool_definitions
 

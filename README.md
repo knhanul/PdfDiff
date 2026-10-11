@@ -9,6 +9,7 @@ PyQt6 기반의 Windows 데스크톱 문서 유틸리티 애플리케이션입�
 | PDF 지정 영역 비교 | 📄 영역지정비교 | 두 PDF에서 사용자가 지정한 영역(AREA)을 추출해 정규화 후 문자열 단위로 정밀 비교 |
 | PDF 전체 비교 | 📄 전체비교 | 페이지 단위 전체 비교. 헤더/푸터 영역을 드래그로 제외 영역으로 설정 가능 |
 | PDF 편집 | ✏️ PDF 편집 | 하나의 창에서 분할·병합·페이지 편집. 페이지를 체크해 구간 분할·회전·이동하고, 미리보기는 확대/축소 |
+| PDF 생성 | 📝 PDF 생성 | 한글, 오피스, 마크다운, 텍스트, 이미지를 PDF로 변환. 폴더 드롭, 다중 선택, 결과 폴더, 작업 이력 |
 
 ### 비교 조건
 
@@ -46,12 +47,14 @@ PdfDiff/
 │   │   ├── resources.py         # 타겟별 리소스/버전 로딩
 │   │   ├── styles.py            # QSS 스타일
 │   │   ├── pdf_compare_worker.py# PDF 비교 백그라운드 스레드
+│   │   ├── pdf_convert.py       # PDF 생성 변환
 │   │   ├── pdf_search_helper.py # PDF 텍스트 검색 헬퍼
 │   │   └── loading_dialog.py    # 로딩 다이얼로그
 │   └── tools/
 │       ├── pdf_compare.py           # PDF 지정 영역 비교
 │       ├── pdf_header_footer_compare.py  # PDF 전체 비교
-│       └── pdf_editor.py            # 통합 PDF 편집 (분할/병합/페이지)
+│       ├── pdf_editor.py            # 통합 PDF 편집 (분할/병합/페이지)
+│       └── pdf_create.py            # PDF 생성 (문서/이미지 변환)
 ├── configs/
 │   ├── settings.py              # 타겟 로딩 로직 (환경변수/실행파일명에서 타겟 추출)
 │   ├── target_posid.py          # posid 타겟 설정
