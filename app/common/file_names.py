@@ -1,16 +1,24 @@
+import re
 from pathlib import Path
 
 INVALID_CHARS = set('\\/:*?"<>|')
 RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL"} | {f"COM{i}" for i in range(1, 10)} | {f"LPT{i}" for i in range(1, 10)}
 
 
-def build_new_name(original_name, find, replace, prefix, suffix, number=None, digits=3, number_at_end=False):
+def build_new_name(original_name, find, replace, prefix, suffix, number=None, digits=3, number_at_end=False,
+                   delete_text="", collapse=False, date_text="", date_at_end=False):
     """확장자는 유지하고 이름만 바꾼다."""
     path = Path(original_name)
     stem = path.stem
     if find:
         stem = stem.replace(find, replace)
+    if delete_text:
+        stem = stem.replace(delete_text, "")
+    if collapse:
+        stem = collapse_separators(stem)
     stem = f"{prefix}{stem}{suffix}"
+    if date_text:
+        stem = f"{stem}_{date_text}" if date_at_end else f"{date_text}_{stem}"
     if number is not None:
         token = str(number).zfill(max(1, digits))
         stem = f"{stem}_{token}" if number_at_end else f"{token}_{stem}"
@@ -20,6 +28,13 @@ def build_new_name(original_name, find, replace, prefix, suffix, number=None, di
     if stem.upper() in RESERVED_NAMES:
         stem += "_"
     return stem + path.suffix
+
+
+def collapse_separators(stem):
+    stem = re.sub(r" {2,}", " ", stem)
+    stem = re.sub(r"_{2,}", "_", stem)
+    stem = re.sub(r"-{2,}", "-", stem)
+    return stem.strip(" _-")
 
 
 def direct_name(original_name, typed):

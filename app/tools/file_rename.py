@@ -7,7 +7,7 @@ from pathlib import Path
 from PyQt6.QtCore import QEvent, QFileInfo, QSize, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QFileDialog, QFileIconProvider, QFormLayout,
+    QAbstractItemView, QButtonGroup, QCheckBox, QFileDialog, QFileIconProvider, QFormLayout,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QMessageBox, QProgressBar, QPushButton, QRadioButton, QSpinBox, QSplitter,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QInputDialog,
@@ -132,11 +132,38 @@ class FileRenameWidget(QWidget):
         self.replace_edit = QLineEdit()
         self.prefix_edit = QLineEdit()
         self.suffix_edit = QLineEdit()
+        self.delete_edit = QLineEdit()
         form.addRow("찾을 글자", self.find_edit)
         form.addRow("바꿀 글자", self.replace_edit)
+        form.addRow("지울 글자", self.delete_edit)
         form.addRow("앞에 추가", self.prefix_edit)
         form.addRow("뒤에 추가", self.suffix_edit)
         right_layout.addLayout(form)
+
+        self.collapse_check = QCheckBox("연속 공백·밑줄 정리")
+        self.collapse_check.setToolTip("연속된 공백, 밑줄, 붙임표를 하나로 합칩니다.")
+        right_layout.addWidget(self.collapse_check)
+
+        date_row = QHBoxLayout()
+        self.date_check = QCheckBox("날짜 넣기")
+        self.date_today = QRadioButton("오늘")
+        self.date_modified = QRadioButton("수정일")
+        self.date_today.setChecked(True)
+        self.date_front = QRadioButton("이름 앞")
+        self.date_back = QRadioButton("이름 뒤")
+        self.date_front.setChecked(True)
+        self.date_kind_group = QButtonGroup(self)
+        self.date_kind_group.addButton(self.date_today)
+        self.date_kind_group.addButton(self.date_modified)
+        self.date_place_group = QButtonGroup(self)
+        self.date_place_group.addButton(self.date_front)
+        self.date_place_group.addButton(self.date_back)
+        date_row.addWidget(self.date_check)
+        date_row.addWidget(self.date_today)
+        date_row.addWidget(self.date_modified)
+        date_row.addWidget(self.date_front)
+        date_row.addWidget(self.date_back)
+        right_layout.addLayout(date_row)
 
         number_row = QHBoxLayout()
         self.number_check = QCheckBox("번호 붙이기")
@@ -149,6 +176,9 @@ class FileRenameWidget(QWidget):
         self.number_front = QRadioButton("이름 앞")
         self.number_back = QRadioButton("이름 뒤")
         self.number_front.setChecked(True)
+        self.number_group = QButtonGroup(self)
+        self.number_group.addButton(self.number_front)
+        self.number_group.addButton(self.number_back)
         number_row.addWidget(self.number_check)
         number_row.addWidget(QLabel("시작"))
         number_row.addWidget(self.start_spin)
@@ -202,14 +232,25 @@ class FileRenameWidget(QWidget):
         root.addWidget(splitter, 1)
         self._create_bottom_bar(root)
 
-        for widget in (self.find_edit, self.replace_edit, self.prefix_edit, self.suffix_edit):
+        for widget in (self.find_edit, self.replace_edit, self.delete_edit, self.prefix_edit, self.suffix_edit):
             widget.textChanged.connect(self.refresh_preview)
+        self.collapse_check.toggled.connect(self.refresh_preview)
+        self.date_check.toggled.connect(self._toggle_date)
+        self.date_check.toggled.connect(self.refresh_preview)
+        self.date_today.toggled.connect(self.refresh_preview)
+        self.date_modified.toggled.connect(self.refresh_preview)
+        self.date_front.toggled.connect(self.refresh_preview)
         self.number_check.toggled.connect(self._toggle_number)
         self.number_check.toggled.connect(self.refresh_preview)
         self.start_spin.valueChanged.connect(self.refresh_preview)
         self.digits_spin.valueChanged.connect(self.refresh_preview)
         self.number_front.toggled.connect(self.refresh_preview)
         self._toggle_number(False)
+        self._toggle_date(False)
+
+    def _toggle_date(self, checked):
+        for widget in (self.date_today, self.date_modified, self.date_front, self.date_back):
+            widget.setEnabled(checked)
 
     def _style_table(self):
         self.file_table.setStyleSheet(f"""
@@ -368,6 +409,10 @@ class FileRenameWidget(QWidget):
                     number,
                     self.digits_spin.value(),
                     self.number_back.isChecked(),
+                    delete_text=self.delete_edit.text(),
+                    collapse=self.collapse_check.isChecked(),
+                    date_text=self._date_text(src),
+                    date_at_end=self.date_back.isChecked(),
                 )
                 if number is not None:
                     number += 1
@@ -377,6 +422,14 @@ class FileRenameWidget(QWidget):
             target.setData(Qt.ItemDataRole.UserRole, str(directory / final_name))
             target.setToolTip(str(directory / final_name))
         self._updating = False
+
+    def _date_text(self, src):
+        if not self.date_check.isChecked():
+            return ""
+        when = datetime.now()
+        if self.date_modified.isChecked():
+            when = datetime.fromtimestamp(src.stat().st_mtime)
+        return when.strftime("%Y-%m-%d")
 
     def rename_checked(self):
         rows = self._checked_rows()
