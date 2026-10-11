@@ -46,6 +46,21 @@ def unique_pdf_path(directory, stem):
         number += 1
 
 
+def merge_pdfs(paths, dest):
+    out = pymupdf.open()
+    try:
+        for path in paths:
+            src = pymupdf.open(path)
+            out.insert_pdf(src)
+            src.close()
+        if out.page_count == 0:
+            raise RuntimeError("합칠 페이지가 없습니다.")
+        out.save(dest)
+    finally:
+        out.close()
+    return dest
+
+
 def convert_to_pdf(src, out_dir):
     src = Path(src)
     ext = src.suffix.lower()

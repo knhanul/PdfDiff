@@ -13,6 +13,9 @@ from PyQt6.QtWidgets import (
 )
 
 from app.common.styles import MODERN_QSS
+from app.common.user_prefs import load_dir, save_dir
+
+EDITOR_OUTPUT_KEY = "output/pdf_editor"
 
 BASE_ICON = (120, 160)
 
@@ -158,6 +161,10 @@ class PdfEditorWidget(QWidget):
         folder_row.addWidget(btn_folder)
         folder_row.addWidget(btn_folder_clear)
         right_layout.addLayout(folder_row)
+        saved_dir = load_dir(EDITOR_OUTPUT_KEY)
+        if saved_dir:
+            self.output_dir = saved_dir
+            self.output_edit.setText(saved_dir)
 
         right_layout.addWidget(QLabel("실행 이력"))
         self.history_list = QListWidget()
@@ -445,10 +452,12 @@ class PdfEditorWidget(QWidget):
             return
         self.output_dir = path
         self.output_edit.setText(path)
+        save_dir(EDITOR_OUTPUT_KEY, path)
 
     def _clear_output_dir(self):
         self.output_dir = ""
         self.output_edit.clear()
+        save_dir(EDITOR_OUTPUT_KEY, "")
 
     def _result_dir(self, fallback_file):
         if self.output_dir and os.path.isdir(self.output_dir):
