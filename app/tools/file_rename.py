@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 
 from app.common.file_names import build_new_name, direct_name, unique_name
 from app.common.loading_dialog import note_progress, style_task_progress
-from app.common.styles import COLOR_BORDER, COLOR_PRIMARY, COLOR_SIDEBAR_BG, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, MODERN_QSS
+from app.common.styles import COLOR_BORDER, COLOR_PRIMARY, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, MODERN_QSS
 from app.common.user_prefs import load_dir, save_dir
 
 OUTPUT_KEY = "output/file_rename"
@@ -386,12 +386,12 @@ class FileRenameWidget(QWidget):
                 selection-color: {COLOR_TEXT_PRIMARY};
             }}
             QHeaderView::section {{
-                background-color: {COLOR_SIDEBAR_BG};
-                color: {COLOR_TEXT_PRIMARY};
+                background-color: #C2410C;
+                color: #FFFFFF;
                 font-weight: 600;
                 border: none;
-                border-right: 1px solid #FFD4A8;
-                border-bottom: 2px solid {COLOR_PRIMARY};
+                border-right: 1px solid rgba(255, 255, 255, 0.25);
+                border-bottom: 2px solid #7A2B1C;
                 padding: 6px 8px;
             }}
             QCheckBox::indicator {{

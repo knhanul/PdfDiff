@@ -1,4 +1,4 @@
-# NuniPdf 프로젝트 의존성
+﻿# NuniPdf 프로젝트 의존성
 # 기존 PyQt6 및 관련 라이브러리
 PyQt6>=6.4.0
 PyQt6-Qt6>=6.4.0

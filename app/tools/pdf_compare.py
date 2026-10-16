@@ -14,6 +14,7 @@ from app.common.pdf_compare_worker import CompareThreadManager
 from app.common.pdf_text_normalizer import collect_raw_chars, normalize_raw_chars
 from app.common.comparison_options import ComparisonOptions
 from app.common.comparison_settings import ComparisonSettingsMixin
+from app.common.tool_toggle import ToolSwitchToggle
 
 
 class ViewComparisonTextDialog(QDialog):
@@ -1065,11 +1066,6 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
         bottom_action_layout.setContentsMargins(12, 8, 12, 8)
         bottom_action_layout.setSpacing(10)
 
-        self.btn_switch_tool = QPushButton()
-        self.btn_switch_tool.setObjectName('secondaryBtn')
-        self.btn_switch_tool.setFixedSize(40, 40)
-        bottom_action_layout.addWidget(self.btn_switch_tool)
-
         # Extract data button (secondary) - 가장 왼쪽
         self.btn_view_text = QPushButton('📋  추출 데이터 확인')
         self.btn_view_text.setObjectName('secondaryBtn')
@@ -1115,6 +1111,9 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
         self.btn_focus_mode.setFixedSize(40, 40)
         self.btn_focus_mode.setCheckable(True)
         bottom_action_layout.addWidget(self.btn_focus_mode)
+
+        self.switch_toggle = ToolSwitchToggle(('영역지정비교', '전체비교'))
+        bottom_action_layout.addWidget(self.switch_toggle)
 
         layout.addWidget(bottom_action_bar)
         self.bottom_action_bar = bottom_action_bar

@@ -17,6 +17,7 @@ from app.common.pdf_compare_worker import CompareThreadManager
 from app.common.pdf_text_normalizer import collect_raw_chars, normalize_raw_chars
 from app.common.comparison_options import ComparisonOptions
 from app.common.comparison_settings import ComparisonSettingsMixin
+from app.common.tool_toggle import ToolSwitchToggle
 
 
 class SyncScrollToggle(QCheckBox):
@@ -835,11 +836,6 @@ class HFCompareWidget(ComparisonSettingsMixin, QWidget):
         bl.setContentsMargins(12, 8, 12, 8)
         bl.setSpacing(10)
 
-        self.btn_switch_tool = QPushButton()
-        self.btn_switch_tool.setObjectName('secondaryBtn')
-        self.btn_switch_tool.setFixedSize(40, 40)
-        bl.addWidget(self.btn_switch_tool)
-
         # 동시 스크롤 체크박스
         self.sync_scroll_cb = SyncScrollToggle('동시 스크롤')
         self.sync_scroll_cb.setObjectName('actionCheckBox')
@@ -887,6 +883,9 @@ class HFCompareWidget(ComparisonSettingsMixin, QWidget):
         self.btn_focus_mode.setFixedSize(40, 40)
         self.btn_focus_mode.setCheckable(True)
         bl.addWidget(self.btn_focus_mode)
+
+        self.switch_toggle = ToolSwitchToggle(('영역지정비교', '전체비교'))
+        bl.addWidget(self.switch_toggle)
 
         root.addWidget(bar)
         self.bottom_action_bar = bar

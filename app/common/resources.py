@@ -90,6 +90,37 @@ def get_icon_path():
     return None
 
 
+def _find_common_asset(name):
+    """공통 assets 폴더와 타겟 에셋 폴더에서 파일을 찾는다."""
+    if not name:
+        return None
+    if os.path.isabs(name):
+        return name if os.path.exists(name) else None
+    runtime_base = _runtime_base_path()
+    base_dir = str(SETTINGS['BASE_DIR'])
+    asset_dir = SETTINGS['ASSET_DIR']
+    candidates = [
+        os.path.join(runtime_base, 'assets', name),
+        os.path.join(base_dir, 'assets', name),
+        os.path.join(runtime_base, asset_dir, name),
+        os.path.join(base_dir, asset_dir, name),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def get_about_image_path():
+    """정보 팝업 대표 이미지 경로. SETTINGS['ABOUT_IMAGE']로 파일명 변경 가능."""
+    return _find_common_asset(str(SETTINGS.get('ABOUT_IMAGE') or 'AIKickOff.png'))
+
+
+def get_about_icon_path():
+    """헤더 정보 버튼 아이콘 경로. SETTINGS['ABOUT_ICON']로 파일명 변경 가능."""
+    return _find_common_asset(str(SETTINGS.get('ABOUT_ICON') or 'about_blue.svg'))
+
+
 def get_timer_gif_path():
     """시간이 걸리는 작업 표시용 GIF 경로."""
     name = "nuni_icon_orange_spin.gif"

@@ -51,7 +51,8 @@ class MultiPageSelectionTests(unittest.TestCase):
             tool = window.current_tool_widget
             layout = tool.bottom_action_bar.layout()
             button = tool.btn_focus_mode
-            self.assertIs(layout.itemAt(layout.count() - 1).widget(), button)
+            self.assertIs(layout.itemAt(layout.count() - 1).widget(), tool.switch_toggle)
+            self.assertIs(layout.itemAt(layout.count() - 2).widget(), button)
             actions = [layout.itemAt(i).widget() for i in range(layout.count() - 1)
                        if layout.itemAt(i).widget() is not None]
             before = [(action.isVisible(), action.minimumSize(), action.maximumSize())
@@ -87,19 +88,20 @@ class MultiPageSelectionTests(unittest.TestCase):
         for focused in (False, True):
             if window.focus_mode != focused:
                 window.current_tool_widget.btn_focus_mode.click()
-            area.btn_switch_tool.click()
+            area.switch_toggle.buttons[1].click()
             self.assertEqual(window.current_tool_key, 'pdf_hf_compare')
             full = window.current_tool_widget
             self.assertIsInstance(full.sync_scroll_cb, SyncScrollToggle)
+            self.assertTrue(full.switch_toggle.buttons[1].isChecked())
             for tool in (area, full):
-                self.assertIs(tool.bottom_action_bar.layout().itemAt(0).widget(), tool.btn_switch_tool)
-                self.assertFalse(tool.btn_switch_tool.icon().isNull())
-                self.assertTrue(tool.btn_switch_tool.isEnabled())
+                bar_layout = tool.bottom_action_bar.layout()
+                self.assertIs(bar_layout.itemAt(bar_layout.count() - 1).widget(), tool.switch_toggle)
+                self.assertTrue(tool.switch_toggle.isEnabled())
             full.sync_scroll_cb.click()
             self.assertTrue(full.sync_scroll_enabled)
             full.sync_scroll_cb.click()
             self.assertFalse(full.sync_scroll_enabled)
-            full.btn_switch_tool.click()
+            full.switch_toggle.buttons[0].click()
             self.assertEqual(window.current_tool_key, 'pdf_compare')
             self.assertIs(window.current_tool_widget, area)
             self.assertEqual(window.focus_mode, focused)
@@ -121,7 +123,7 @@ class MultiPageSelectionTests(unittest.TestCase):
         self.app.processEvents()
         self.assertLess(area.bottom_action_bar.height(), normal_height)
         self.assertLessEqual(area.bottom_action_bar.height(), 36)
-        area.btn_switch_tool.click()
+        area.switch_toggle.buttons[1].click()
         self.app.processEvents()
         full = window.current_tool_widget
         self.assertTrue(full.lbl_name1.isHidden())
@@ -136,7 +138,7 @@ class MultiPageSelectionTests(unittest.TestCase):
         full.btn_focus_mode.click()
         self.app.processEvents()
         self.assertTrue(full.lbl_name1.isVisible())
-        full.btn_switch_tool.click()
+        full.switch_toggle.buttons[0].click()
         self.app.processEvents()
         self.assertEqual(area.bottom_action_bar.height(), normal_height)
         self.assertEqual(area.layout().contentsMargins(), normal_margins)

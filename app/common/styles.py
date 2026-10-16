@@ -26,8 +26,11 @@ _PRIMARY_PRESSED = '#CC5200'
 _PRIMARY_LIGHT = 'rgba(255, 107, 0, 0.08)'
 _PRIMARY_LIGHT_STRONG = 'rgba(255, 107, 0, 0.15)'
 _PRIMARY_SELECTION = 'rgba(255, 107, 0, 0.25)'
-_SIDEBAR_BG = '#FFF4E6'          # soft orange background
-_SIDEBAR_BORDER = '#FFD4A8'
+_SIDEBAR_BG = '#EAE7E4'          # warm greige background
+_SIDEBAR_BORDER = '#DCD5D0'      # soft warm gray border
+_SIDEBAR_TEXT = '#55504D'        # deep gray for unselected menu text
+_SIDEBAR_HOVER = '#DCD5D0'       # light warm gray hover
+_SIDEBAR_ACTIVE_BG = '#A63F2B'   # deep terracotta for selected menu
 
 _IOS_GREEN = '#34C759'
 _IOS_ORANGE = '#FF9500'
@@ -76,7 +79,7 @@ QPushButton#sidebarBtn {{
     border: none;
     border-radius: 12px;
     padding: 12px 16px;
-    color: {_PRIMARY};
+    color: {_SIDEBAR_TEXT};
     font-size: 14px;
     font-weight: 500;
     text-align: left;
@@ -86,16 +89,16 @@ QPushButton#sidebarBtn[collapsed='true'] {{
     padding: 8px;
     text-align: center;
     font-size: 20px;
-    color: {_PRIMARY};
+    color: {_SIDEBAR_TEXT};
 }}
 
 QPushButton#sidebarBtn:hover {{
-    background-color: {_PRIMARY_LIGHT};
-    color: {_PRIMARY_HOVER};
+    background-color: {_SIDEBAR_HOVER};
+    color: {_SIDEBAR_TEXT};
 }}
 
 QPushButton#sidebarBtn[active='true'] {{
-    background-color: {_PRIMARY};
+    background-color: {_SIDEBAR_ACTIVE_BG};
     color: #FFFFFF;
 }}
 

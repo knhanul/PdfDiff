@@ -3,22 +3,28 @@ from datetime import datetime
 from pathlib import Path
 
 import pymupdf
-from PyQt6.QtCore import Qt, QSize, QUrl
+from PyQt6.QtCore import Qt, QSize, QUrl, QFileInfo
 from PyQt6.QtGui import QPixmap, QImage, QDragEnterEvent, QDropEvent, QIcon, QTransform, QDesktopServices
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
     QListWidget, QListWidgetItem, QMessageBox, QFrame, QSplitter,
     QTabWidget, QLineEdit, QSpinBox, QRadioButton, QProgressBar,
-    QAbstractItemView, QButtonGroup,
+    QAbstractItemView, QButtonGroup, QTableWidget, QTableWidgetItem,
+    QFileIconProvider,
 )
 
-from app.common.styles import MODERN_QSS
+from app.common.styles import (
+    COLOR_BORDER, COLOR_PRIMARY, COLOR_TEXT_PRIMARY, MODERN_QSS,
+)
 from app.common.loading_dialog import note_progress, style_task_progress
 from app.common.user_prefs import load_dir, save_dir
+from app.tools.pdf_create import CheckBoxHeader
 
 EDITOR_OUTPUT_KEY = "output/pdf_editor"
 
 BASE_ICON = (120, 160)
+
+FILE_COLUMNS = ("", "파일명", "페이지", "수정일자", "크기", "경로")
 
 
 class PdfEditorWidget(QWidget):
@@ -39,6 +45,8 @@ class PdfEditorWidget(QWidget):
         self.thumb_scale = 1.0
         self._planned_action = None
         self.output_dir = ""
+        self.icon_provider = QFileIconProvider()
+        self._updating_checks = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -51,22 +59,41 @@ class PdfEditorWidget(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(6)
 
-        self.file_list = QListWidget()
-        self.file_list.setMaximumHeight(160)
-        self.file_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
-        self.file_list.currentRowChanged.connect(self.on_file_selected)
-        self.file_list.model().rowsMoved.connect(self._on_file_order_changed)
-        left_layout.addWidget(self.file_list)
+        self.file_table = QTableWidget(0, len(FILE_COLUMNS))
+        self.file_header = CheckBoxHeader(self.file_table)
+        self.file_table.setHorizontalHeader(self.file_header)
+        self.file_table.setHorizontalHeaderLabels(FILE_COLUMNS)
+        self.file_header.clicked_all.connect(self._toggle_all_file_checks)
+        self.file_table.setMaximumHeight(200)
+        self.file_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.file_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.file_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.file_table.setShowGrid(False)
+        self.file_table.setAlternatingRowColors(True)
+        self.file_table.setIconSize(QSize(20, 20))
+        self.file_table.verticalHeader().setVisible(False)
+        self.file_table.currentCellChanged.connect(self._on_current_cell_changed)
+        self.file_table.itemChanged.connect(self._on_file_item_changed)
+        self.file_table.setColumnWidth(0, 40)
+        self.file_table.setColumnWidth(1, 200)
+        self.file_table.setColumnWidth(2, 60)
+        self.file_table.setColumnWidth(3, 140)
+        self.file_table.setColumnWidth(4, 80)
+        self._style_file_table()
+        left_layout.addWidget(self.file_table)
 
         file_btns = QHBoxLayout()
         btn_add = QPushButton("파일 추가")
         btn_add.setObjectName("actionBtn")
         btn_add.clicked.connect(self.add_files)
-        btn_remove = QPushButton("파일 삭제")
-        btn_remove.clicked.connect(self.remove_selected_file)
+        btn_remove = QPushButton("체크 삭제")
+        btn_remove.clicked.connect(self.remove_checked_files)
         file_btns.addWidget(btn_add)
         file_btns.addWidget(btn_remove)
         file_btns.addStretch()
+        self.count_label = QLabel("체크 0 / 전체 0")
+        self.count_label.setObjectName("toolbarLabel")
+        file_btns.addWidget(self.count_label)
         left_layout.addLayout(file_btns)
 
         viewer = QFrame()
@@ -243,7 +270,7 @@ class PdfEditorWidget(QWidget):
     def _create_merge_tab(self):
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.addWidget(QLabel("여러 PDF를 끌어다 놓거나 [파일 추가]로 불러오세요.\n왼쪽 목록 순서대로 병합됩니다."))
+        lay.addWidget(QLabel("여러 PDF를 끌어다 놓거나 [파일 추가]로 불러오세요.\n체크한 파일이 왼쪽 목록 순서대로 병합됩니다."))
         btn_up = QPushButton("선택 파일 위로")
         btn_up.clicked.connect(self.move_file_up)
         btn_down = QPushButton("선택 파일 아래로")
@@ -287,6 +314,46 @@ class PdfEditorWidget(QWidget):
         if paths:
             self._load_files(paths)
 
+    def _style_file_table(self):
+        self.file_table.setStyleSheet(f"""
+            QTableWidget {{
+                background: white;
+                alternate-background-color: #FFF8F2;
+                border: 1px solid {COLOR_BORDER};
+                selection-background-color: #FFE9DC;
+                selection-color: {COLOR_TEXT_PRIMARY};
+                outline: none;
+            }}
+            QTableWidget::item {{
+                border: none;
+                padding: 2px 4px;
+            }}
+            QHeaderView::section {{
+                background-color: #C2410C;
+                color: #FFFFFF;
+                font-weight: 600;
+                border: none;
+                border-right: 1px solid rgba(255, 255, 255, 0.25);
+                border-bottom: 2px solid #7A2B1C;
+                padding: 6px 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 1.5px solid #C6C6C8;
+                border-radius: 5px;
+                background: white;
+            }}
+            QCheckBox::indicator:checked {{
+                background: {COLOR_PRIMARY};
+                border: 1.5px solid {COLOR_PRIMARY};
+            }}
+            QCheckBox::indicator:indeterminate {{
+                background: rgba(255, 107, 0, 0.35);
+                border: 1.5px solid {COLOR_PRIMARY};
+            }}
+        """)
+
     def _load_files(self, paths):
         first_new = None
         for path in paths:
@@ -297,41 +364,128 @@ class PdfEditorWidget(QWidget):
             except Exception as e:
                 QMessageBox.warning(self, "오류", f"{os.path.basename(path)}\n{e}")
                 continue
+            row = self.file_table.rowCount()
+            self._append_file_row(row, path, doc.page_count)
             self.docs.append(doc)
             self.file_paths.append(path)
-            item = QListWidgetItem(f"{os.path.basename(path)}  ({doc.page_count}p)")
-            item.setData(Qt.ItemDataRole.UserRole, path)
-            self.file_list.addItem(item)
             if first_new is None:
-                first_new = self.file_list.count() - 1
+                first_new = row
+        self._sync_header_check()
+        self._update_count()
         if self.current_index < 0 and first_new is not None:
-            self.file_list.setCurrentRow(first_new)
+            self.file_table.selectRow(first_new)
 
-    def remove_selected_file(self):
-        row = self.file_list.currentRow()
-        if row < 0 or row >= len(self.docs):
-            QMessageBox.warning(self, "알림", "목록에서 삭제할 PDF를 선택하세요.")
+    def _append_file_row(self, row, path, page_count):
+        found = Path(path)
+        info = QFileInfo(path)
+        stat = found.stat()
+        enabled = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        check_item = QTableWidgetItem()
+        check_item.setFlags(enabled | Qt.ItemFlag.ItemIsUserCheckable)
+        check_item.setCheckState(Qt.CheckState.Checked)
+        name_item = QTableWidgetItem(self.icon_provider.icon(info), found.name)
+        name_item.setData(Qt.ItemDataRole.UserRole, str(found))
+        name_item.setToolTip(str(found))
+        page_item = QTableWidgetItem(str(page_count))
+        page_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        date_item = QTableWidgetItem(datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"))
+        size_item = QTableWidgetItem(self._format_size(stat.st_size))
+        size_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        path_item = QTableWidgetItem(str(found.parent))
+        path_item.setToolTip(str(found.parent))
+        self.file_table.insertRow(row)
+        for column, item in enumerate((check_item, name_item, page_item, date_item, size_item, path_item)):
+            if column != 0:
+                item.setFlags(enabled)
+            self.file_table.setItem(row, column, item)
+
+    @staticmethod
+    def _format_size(size):
+        value = float(size)
+        for unit in ("B", "KB", "MB", "GB"):
+            if value < 1024 or unit == "GB":
+                if unit == "B":
+                    return f"{int(value)} B"
+                return f"{value:.1f} {unit}"
+            value /= 1024
+        return f"{int(size)} B"
+
+    def _checked_file_rows(self):
+        rows = []
+        for row in range(self.file_table.rowCount()):
+            item = self.file_table.item(row, 0)
+            if item is not None and item.checkState() == Qt.CheckState.Checked:
+                rows.append(row)
+        return rows
+
+    def _on_current_cell_changed(self, row, column, prev_row, prev_col):
+        if row != prev_row:
+            self.on_file_selected(row)
+
+    def _on_file_item_changed(self, item):
+        if self._updating_checks or item.column() != 0:
             return
-        path = self.file_paths[row]
-        try:
-            self.docs[row].close()
-        except Exception:
-            pass
-        del self.docs[row]
-        del self.file_paths[row]
-        self._thumb_cache = {key: pixmap for key, pixmap in self._thumb_cache.items() if key[0] != path}
-        self.file_list.model().blockSignals(True)
-        self.file_list.takeItem(row)
-        self.file_list.model().blockSignals(False)
+        self._sync_header_check()
+        self._update_count()
+
+    def _toggle_all_file_checks(self):
+        self._set_all_file_checks(len(self._checked_file_rows()) < self.file_table.rowCount())
+
+    def _set_all_file_checks(self, checked):
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        self._updating_checks = True
+        for row in range(self.file_table.rowCount()):
+            item = self.file_table.item(row, 0)
+            if item is not None:
+                item.setCheckState(state)
+        self._updating_checks = False
+        self._sync_header_check()
+        self._update_count()
+
+    def _sync_header_check(self):
+        total = self.file_table.rowCount()
+        checked = len(self._checked_file_rows())
+        if total == 0 or checked == 0:
+            state = Qt.CheckState.Unchecked
+        elif checked == total:
+            state = Qt.CheckState.Checked
+        else:
+            state = Qt.CheckState.PartiallyChecked
+        self.file_header.set_state(state)
+
+    def _update_count(self):
+        self.count_label.setText(f"체크 {len(self._checked_file_rows())} / 전체 {self.file_table.rowCount()}")
+
+    def remove_checked_files(self):
+        rows = self._checked_file_rows()
+        if not rows:
+            QMessageBox.warning(self, "알림", "목록에서 삭제할 PDF를 체크하세요.")
+            return
+        self.file_table.blockSignals(True)
+        for row in reversed(rows):
+            path = self.file_paths[row]
+            try:
+                self.docs[row].close()
+            except Exception:
+                pass
+            del self.docs[row]
+            del self.file_paths[row]
+            self._thumb_cache = {key: pixmap for key, pixmap in self._thumb_cache.items() if key[0] != path}
+            self.file_table.removeRow(row)
+        self.file_table.blockSignals(False)
         self._shown_path = None
         self.current_index = -1
         self.page_plan = []
         self.checked = set()
-        if self.file_list.count():
-            self.file_list.setCurrentRow(min(row, self.file_list.count() - 1))
+        if self.file_table.rowCount():
+            target = min(rows[0], self.file_table.rowCount() - 1)
+            self.file_table.selectRow(target)
+            self.on_file_selected(target)
         else:
             self.page_list.clear()
             self._update_sel_label()
+        self._sync_header_check()
+        self._update_count()
 
     def on_file_selected(self, row):
         if row < 0 or row >= len(self.docs):
@@ -378,14 +532,18 @@ class PdfEditorWidget(QWidget):
 
     def _refresh_page_thumbnails(self):
         self._updating_pages = True
-        self.page_list.clear()
-        for plan in self.page_plan:
-            selected = plan["src"] in self.checked
-            item = QListWidgetItem(QIcon(self._display_pixmap(plan)), self._page_label(plan, selected))
-            item.setData(Qt.ItemDataRole.UserRole, plan["src"])
-            item.setSelected(selected)
-            self.page_list.addItem(item)
-        self._updating_pages = False
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self.page_list.clear()
+            for plan in self.page_plan:
+                selected = plan["src"] in self.checked
+                item = QListWidgetItem(QIcon(self._display_pixmap(plan)), self._page_label(plan, selected))
+                item.setData(Qt.ItemDataRole.UserRole, plan["src"])
+                item.setSelected(selected)
+                self.page_list.addItem(item)
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._updating_pages = False
         self._update_sel_label()
 
     def _apply_zoom_size(self):
@@ -563,38 +721,30 @@ class PdfEditorWidget(QWidget):
         self.status_label.setText("페이지 편집을 불러온 상태로 되돌렸습니다.")
 
     def move_file_up(self):
-        row = self.file_list.currentRow()
+        row = self.file_table.currentRow()
         if row > 0:
             self._swap_files(row, row - 1)
 
     def move_file_down(self):
-        row = self.file_list.currentRow()
-        if 0 <= row < self.file_list.count() - 1:
+        row = self.file_table.currentRow()
+        if 0 <= row < self.file_table.rowCount() - 1:
             self._swap_files(row, row + 1)
 
-    def _on_file_order_changed(self):
-        new_docs = []
-        new_paths = []
-        for i in range(self.file_list.count()):
-            path = self.file_list.item(i).data(Qt.ItemDataRole.UserRole)
-            if path not in self.file_paths:
-                return
-            idx = self.file_paths.index(path)
-            new_docs.append(self.docs[idx])
-            new_paths.append(path)
-        self.docs = new_docs
-        self.file_paths = new_paths
-        item = self.file_list.currentItem()
-        if item is not None and item.data(Qt.ItemDataRole.UserRole) in self.file_paths:
-            self.current_index = self.file_paths.index(item.data(Qt.ItemDataRole.UserRole))
-
     def _swap_files(self, a, b):
-        self.file_list.model().blockSignals(True)
-        item = self.file_list.takeItem(a)
-        self.file_list.insertItem(b, item)
-        self.file_list.model().blockSignals(False)
-        self._on_file_order_changed()
-        self.file_list.setCurrentRow(b)
+        self._updating_checks = True
+        for column in range(self.file_table.columnCount()):
+            item_a = self.file_table.takeItem(a, column)
+            item_b = self.file_table.takeItem(b, column)
+            self.file_table.setItem(a, column, item_b)
+            self.file_table.setItem(b, column, item_a)
+        self._updating_checks = False
+        self.docs[a], self.docs[b] = self.docs[b], self.docs[a]
+        self.file_paths[a], self.file_paths[b] = self.file_paths[b], self.file_paths[a]
+        if self.current_index == a:
+            self.current_index = b
+        elif self.current_index == b:
+            self.current_index = a
+        self.file_table.selectRow(b)
 
     def _preview_split(self):
         self._sync_checked()
@@ -668,11 +818,12 @@ class PdfEditorWidget(QWidget):
         return f"{pages[0]}-{pages[-1]}"
 
     def _preview_merge(self):
-        if len(self.docs) < 2:
-            self.status_label.setText("병합하려면 PDF를 2개 이상 불러오세요.")
+        rows = self._checked_file_rows()
+        if len(rows) < 2:
+            self.status_label.setText("병합하려면 PDF를 2개 이상 체크하세요.")
             return False
-        names = [os.path.basename(path) for path in self.file_paths]
-        self._planned_action = ("merge", {})
+        names = [os.path.basename(self.file_paths[row]) for row in rows]
+        self._planned_action = ("merge", {"rows": rows})
         self.status_label.setText("병합 순서: " + " → ".join(names))
         return True
 
@@ -833,16 +984,17 @@ class PdfEditorWidget(QWidget):
         return path or None
 
     def _exec_merge(self):
-        if not self.docs:
+        rows = self._planned_action[1].get("rows") or list(range(len(self.docs)))
+        if not rows:
             return None
-        save_path = self._save_target("merged.pdf", self.file_paths[0])
+        save_path = self._save_target("merged.pdf", self.file_paths[rows[0]])
         if not save_path:
             return None
         self.progress.setVisible(True)
-        self.progress.setMaximum(max(1, len(self.docs)))
+        self.progress.setMaximum(len(rows))
         out = pymupdf.open()
-        for index, doc in enumerate(self.docs, start=1):
-            out.insert_pdf(doc)
+        for index, row in enumerate(rows, start=1):
+            out.insert_pdf(self.docs[row])
             note_progress(self.progress, index)
         out.save(save_path)
         out.close()

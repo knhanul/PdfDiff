@@ -1,11 +1,12 @@
 from functools import partial
 import importlib
  
-from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
+from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer
 from PyQt6.QtGui import QFont, QIcon, QPixmap
-from PyQt6.QtWidgets import QApplication, QDialog, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStyle, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStyle, QVBoxLayout, QWidget
  
-from app.common.resources import APP_NAME, COMPANY_NAME, DEVELOPER, RELEASE_DATE, VERSION, get_icon_path, get_logo_path
+from app.common.about_dialog import AboutDialog, get_about_info
+from app.common.resources import APP_NAME, COMPANY_NAME, DEVELOPER, VERSION, get_about_icon_path, get_icon_path, get_logo_path
 from app.common.styles import COLOR_PRIMARY, MODERN_QSS
 from app.common.comparison_settings import ComparisonSettings
 
@@ -141,8 +142,15 @@ class MdiMainWindow(QMainWindow):
         self.legend_caution_btn.clicked.connect(self.show_legend_caution_for_active_tool)
         header_layout.addWidget(self.legend_caution_btn)
         header_layout.addSpacing(8)
-        self.info_btn = QPushButton('ℹ️')
+        self.info_btn = QPushButton()
         self.info_btn.setObjectName('infoBtn')
+        about_icon = get_about_icon_path()
+        if about_icon and not QPixmap(about_icon).isNull():
+            self.info_btn.setIcon(QIcon(about_icon))
+            self.info_btn.setIconSize(QSize(20, 20))
+        else:
+            self.info_btn.setText('ℹ️')
+        self.info_btn.setToolTip('프로그램 정보')
         self.info_btn.clicked.connect(self.show_info)
         header_layout.addWidget(self.info_btn)
         header_layout.addSpacing(8)
@@ -153,9 +161,8 @@ class MdiMainWindow(QMainWindow):
         self.close_tool_btn.clicked.connect(self.close_current_tool)
         header_layout.addWidget(self.close_tool_btn)
         header_layout.addSpacing(4)
-        self.header_focus_btn = QPushButton()
-        self.header_focus_btn.setObjectName('infoBtn')
-        self.header_focus_btn.setFixedSize(36, 36)
+        self.header_focus_btn = QPushButton('집중모드')
+        self.header_focus_btn.setObjectName('secondaryBtn')
         self.header_focus_btn.setCheckable(True)
         self.header_focus_btn.clicked.connect(self.toggle_sidebar)
         header_layout.addWidget(self.header_focus_btn)
@@ -202,8 +209,7 @@ class MdiMainWindow(QMainWindow):
     def _sync_header_focus_button(self):
         button = self.header_focus_btn
         label = '일반 모드로 전환' if self.focus_mode else '집중 모드로 전환'
-        icon = QStyle.StandardPixmap.SP_TitleBarNormalButton if self.focus_mode else QStyle.StandardPixmap.SP_TitleBarMaxButton
-        button.setIcon(button.style().standardIcon(icon))
+        button.setText('일반모드' if self.focus_mode else '집중모드')
         button.setChecked(self.focus_mode)
         button.setToolTip(label)
         button.setAccessibleName(label)
@@ -242,12 +248,17 @@ class MdiMainWindow(QMainWindow):
                 'layouts': [(layout.contentsMargins(), layout.spacing()) for layout in layouts],
                 'buttons': [(button, button.minimumSize(), button.maximumSize())
                             for button in bar.findChildren(QPushButton)],
+                'toggles': [(widget, widget.layout().contentsMargins())
+                            for widget in bar.findChildren(QFrame, 'toolToggle')],
             }
         normal = tool._normal_focus_layout
         if hasattr(tool, 'lbl_name1'):
             tool.lbl_name1.setVisible(not self.focus_mode)
         if hasattr(tool, 'lbl_name2'):
             tool.lbl_name2.setVisible(not self.focus_mode)
+        # 도구 전환 토글은 집중모드(사이드바 숨김)에서만 표시
+        if hasattr(tool, 'switch_toggle'):
+            tool.switch_toggle.setVisible(self.focus_mode)
         if self.focus_mode:
             bar.setStyleSheet('''
                 QFrame#actionBar { min-height: 0px; padding: 0px; }
@@ -268,6 +279,8 @@ class MdiMainWindow(QMainWindow):
                     button.setMinimumWidth(0)
                 else:
                     button.setFixedWidth(28)
+            for widget, _ in normal['toggles']:
+                widget.layout().setContentsMargins(2, 0, 2, 0)
         else:
             for layout, (margins, spacing) in zip(layouts, normal['layouts']):
                 layout.setContentsMargins(margins)
@@ -275,6 +288,8 @@ class MdiMainWindow(QMainWindow):
             for button, minimum, maximum in normal['buttons']:
                 button.setMinimumSize(minimum)
                 button.setMaximumSize(maximum)
+            for widget, margins in normal['toggles']:
+                widget.layout().setContentsMargins(margins)
             bar.setMinimumHeight(normal['minimum_height'])
             bar.setStyleSheet(normal['style'])
 
@@ -448,15 +463,13 @@ class MdiMainWindow(QMainWindow):
                 new_tool = factory_class(comparison_settings=self.comparison_settings)
                 if hasattr(new_tool, 'btn_focus_mode'):
                     new_tool.btn_focus_mode.clicked.connect(self.toggle_sidebar)
-                # 비교 도구끼만 상호 전환 버튼 연결 (기존 동작 유지)
-                if tool_key in ('pdf_compare', 'pdf_hf_compare') and hasattr(new_tool, 'btn_switch_tool'):
-                    target_key = 'pdf_hf_compare' if tool_key == 'pdf_compare' else 'pdf_compare'
-                    target_title = self.get_tool_definition(target_key)['menu_title']
-                    button = new_tool.btn_switch_tool
-                    button.setIcon(button.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
-                    button.setToolTip(f'{target_title}로 전환')
-                    button.setAccessibleName(f'{target_title}로 전환')
-                    button.clicked.connect(partial(self.open_tool, target_key))
+                # 비교 도구 전환 토글 연결 (영역지정비교 ↔ 전체비교)
+                if tool_key in ('pdf_compare', 'pdf_hf_compare') and hasattr(new_tool, 'switch_toggle'):
+                    toggle = new_tool.switch_toggle
+                    toggle.buttons[0].setText(self.get_tool_definition('pdf_compare')['menu_title'])
+                    toggle.buttons[1].setText(self.get_tool_definition('pdf_hf_compare')['menu_title'])
+                    toggle.index_changed.connect(
+                        lambda index: self.open_tool('pdf_compare' if index == 0 else 'pdf_hf_compare'))
                 self.tool_cache[tool_key] = new_tool
                 self.tool_container_layout.addWidget(new_tool)
                 new_tool.ensurePolished()
@@ -475,6 +488,8 @@ class MdiMainWindow(QMainWindow):
         # Update header and sidebar
         self.header_title.setText(tool_definition['window_title'])
         self.set_active_sidebar_button(tool_key)
+        if hasattr(new_tool, 'switch_toggle'):
+            new_tool.switch_toggle.set_active(0 if tool_key == 'pdf_compare' else 1)
 
     def close_current_tool(self):
         """현재 활성화된 도구 닫기"""
@@ -506,36 +521,7 @@ class MdiMainWindow(QMainWindow):
                 self.current_tool_widget.show_legend_caution_dialog()
 
     def show_info(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f'정보 - v{VERSION} ({RELEASE_DATE})')
-        dialog.setFixedSize(600, 500)
-        dialog.setStyleSheet(MODERN_QSS)
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
-
-        # Add AIResearch.png image (6x size)
-        from configs.settings import SETTINGS
-        ai_research_path = SETTINGS['BASE_DIR'] / 'assets' / 'AIResearch.png'
-        if ai_research_path.exists():
-            image = QLabel()
-            image.setPixmap(QPixmap(str(ai_research_path)).scaled(900, 480, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            image.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(image)
-
-        # 빌드 시 설정된 버전/제작일자 표시
-        version_info = QLabel(
-            f"<div style='text-align:center; color:#666; font-size:11px; margin:4px 0;'>"
-            f"버전 v{VERSION} &nbsp;|&nbsp; 제작일자 {RELEASE_DATE}"
-            f"</div>"
-        )
-        version_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(version_info)
-
-        # 나머지 정보 내용은 원본 파일과 동일하게 유지
-        # (전체 내용은 로컬 파일 참조)
-        layout.addStretch()
-        dialog.exec()
+        AboutDialog(get_about_info(), self).exec()
 
     def closeEvent(self, event):
         """애플리케이션 종료 시 모든 스레드 정리 (좀비 프로세스 방지)"""
