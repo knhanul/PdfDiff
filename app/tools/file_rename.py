@@ -480,13 +480,18 @@ class FileRenameWidget(QWidget):
         modified = datetime.fromtimestamp(found.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
         folder = QTableWidgetItem(str(found.parent))
         row = self.file_table.rowCount()
-        self.file_table.insertRow(row)
-        for column, item in enumerate((check, name, new_name, type_item, QTableWidgetItem(modified), folder)):
-            if column == 2:
-                item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsEditable)
-            elif column != 0:
-                item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self.file_table.setItem(row, column, item)
+        was_updating = self._updating
+        self._updating = True
+        try:
+            self.file_table.insertRow(row)
+            for column, item in enumerate((check, name, new_name, type_item, QTableWidgetItem(modified), folder)):
+                if column == 2:
+                    item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsEditable)
+                elif column != 0:
+                    item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                self.file_table.setItem(row, column, item)
+        finally:
+            self._updating = was_updating
 
     def _checked_rows(self):
         rows = []
@@ -587,8 +592,12 @@ class FileRenameWidget(QWidget):
 
     def apply_names(self):
         self.refresh_preview()
+        checked_rows = self._checked_rows()
+        if not checked_rows:
+            QMessageBox.information(self, "안내", "이름을 적용할 파일을 먼저 체크하세요.")
+            return
         plans = []
-        for row in self._checked_rows():
+        for row in checked_rows:
             source = self.file_table.item(row, 1)
             target = self.file_table.item(row, 2)
             src = Path(source.data(Qt.ItemDataRole.UserRole))
@@ -600,7 +609,12 @@ class FileRenameWidget(QWidget):
                 continue
             plans.append((row, src, dest))
         if not plans:
-            QMessageBox.information(self, "알림", "바꿀 이름이 없습니다. 규칙을 입력하고 파일을 체크하세요.")
+            QMessageBox.information(
+                self,
+                "알림",
+                "선택한 파일의 이름이 현재와 같습니다. 이름 변경 규칙을 입력하거나 "
+                "이름 변경 칸을 직접 수정하세요.",
+            )
             return
         self.progress.setVisible(True)
         self.progress.setMaximum(len(plans))

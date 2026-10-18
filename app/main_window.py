@@ -123,21 +123,18 @@ class MdiMainWindow(QMainWindow):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 0, 16, 0)
 
+        self.header_accent = QFrame()
+        self.header_accent.setObjectName('headerAccent')
+        self.header_accent.setFixedSize(3, 22)
+        header_layout.addWidget(self.header_accent)
+        header_layout.addSpacing(10)
         self.header_title = QLabel(APP_NAME)
         self.header_title.setObjectName('headerTitle')
         header_layout.addWidget(self.header_title)
-        header_layout.addSpacing(10)
-        self.header_target = QLabel(COMPANY_NAME)
-        self.header_target.setObjectName('headerTarget')
-        header_layout.addWidget(self.header_target)
         header_layout.addStretch()
 
-        version_label = QLabel(f'v{VERSION}')
-        version_label.setObjectName('headerTarget')
-        header_layout.addWidget(version_label)
-        header_layout.addSpacing(8)
         self.legend_caution_btn = QPushButton('📋 범례 및 주의사항')
-        self.legend_caution_btn.setObjectName('actionBtn')
+        self.legend_caution_btn.setObjectName('headerLegendBtn')
         self.legend_caution_btn.setVisible(False)  # Initially hidden
         self.legend_caution_btn.clicked.connect(self.show_legend_caution_for_active_tool)
         header_layout.addWidget(self.legend_caution_btn)
@@ -149,7 +146,7 @@ class MdiMainWindow(QMainWindow):
             self.info_btn.setIcon(QIcon(about_icon))
             self.info_btn.setIconSize(QSize(20, 20))
         else:
-            self.info_btn.setText('ℹ️')
+            self.info_btn.setText('ⓘ')
         self.info_btn.setToolTip('프로그램 정보')
         self.info_btn.clicked.connect(self.show_info)
         header_layout.addWidget(self.info_btn)
@@ -157,12 +154,12 @@ class MdiMainWindow(QMainWindow):
         # 현재 도구 닫기 버튼
         self.close_tool_btn = QPushButton('✕')
         self.close_tool_btn.setObjectName('closeToolBtn')
-        self.close_tool_btn.setToolTip('현재 도구 닫기')
+        self.close_tool_btn.setToolTip('현재 도구 닫기 (프로그램은 종료되지 않습니다)')
         self.close_tool_btn.clicked.connect(self.close_current_tool)
         header_layout.addWidget(self.close_tool_btn)
         header_layout.addSpacing(4)
         self.header_focus_btn = QPushButton('집중모드')
-        self.header_focus_btn.setObjectName('secondaryBtn')
+        self.header_focus_btn.setObjectName('headerFocusBtn')
         self.header_focus_btn.setCheckable(True)
         self.header_focus_btn.clicked.connect(self.toggle_sidebar)
         header_layout.addWidget(self.header_focus_btn)
@@ -373,7 +370,7 @@ class MdiMainWindow(QMainWindow):
     def toggle_button_blink(self):
         self.blink_state = not self.blink_state
         if self.blink_state:
-            self.legend_caution_btn.setStyleSheet('QPushButton#actionBtn { background-color: #FFA500; color: white; }')
+            self.legend_caution_btn.setStyleSheet('QPushButton#headerLegendBtn { background-color: #EEDBD5; }')
         else:
             self.legend_caution_btn.setStyleSheet('')
 

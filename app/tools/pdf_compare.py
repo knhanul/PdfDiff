@@ -8,7 +8,10 @@ from PyQt6.QtWidgets import QApplication, QDialog, QFileDialog, QFrame, QGraphic
 
 from app.common.loading_dialog import make_overlay_progress, update_overlay_progress
 from app.common.resources import get_timer_gif_path
-from app.common.styles import COLOR_WORKSPACE_DARK, COLOR_P1, COLOR_P2, COLOR_AREA, MODERN_QSS
+from app.common.styles import (
+    COLOR_HEADER_ACCENT, COLOR_WORKSPACE_DARK, COLOR_P1, COLOR_P2, COLOR_AREA,
+    HEADER_FOOTER_INSTRUCTION_HTML, MODERN_QSS,
+)
 from app.common.pdf_search_helper import PDFSearchHelper
 from app.common.pdf_compare_worker import CompareThreadManager
 from app.common.pdf_text_normalizer import collect_raw_chars, normalize_raw_chars
@@ -375,7 +378,7 @@ class PDFViewer(QScrollArea):
         self.vbox.addWidget(self.drop_label)
 
         self.open_pdf_btn = QPushButton('📁 PDF 파일 선택')
-        self.open_pdf_btn.setObjectName('actionBtn')
+        self.open_pdf_btn.setObjectName('pdfOpenButton')
         self.open_pdf_btn.setFixedHeight(48)
         self.open_pdf_btn.setMinimumWidth(180)
         self.open_pdf_btn.setStyleSheet('''
@@ -523,9 +526,9 @@ class PDFViewer(QScrollArea):
         if not self.parent_tool:
             return
         if self == self.parent_tool.viewer1:
-            self.parent_tool.lbl_name1.setText(f"<b style='color:#C2410C; font-size:15px; font-weight:600;'>[PDF 1] 📄 {os.path.basename(pdf_path)}</b>")
+            self.parent_tool.lbl_name1.setText(f"<b style='color:{COLOR_HEADER_ACCENT}; font-size:15px; font-weight:600;'>[PDF 1] 📄 {os.path.basename(pdf_path)}</b>")
         elif self == self.parent_tool.viewer2:
-            self.parent_tool.lbl_name2.setText(f"<b style='color:#C2410C; font-size:15px; font-weight:600;'>[PDF 2] 📄 {os.path.basename(pdf_path)}</b>")
+            self.parent_tool.lbl_name2.setText(f"<b style='color:{COLOR_HEADER_ACCENT}; font-size:15px; font-weight:600;'>[PDF 2] 📄 {os.path.basename(pdf_path)}</b>")
 
     def open_pdf_via_dialog(self):
         file_path, _ = QFileDialog.getOpenFileName(self, 'PDF 파일 선택', '', 'PDF Files (*.pdf)')
@@ -551,16 +554,10 @@ class PDFViewer(QScrollArea):
                     event.acceptProposedAction()
                     # Highlight drop zone
                     if hasattr(self, 'drop_label') and self.drop_label.isVisible():
-                        self.drop_label.setStyleSheet('''
-                            QLabel {
-                                color: #FFFFFF;
-                                font-size: 14px;
-                                font-weight: 600;
-                                padding: 40px 30px;
-                                border: 2px dashed #007AFF;
-                                border-radius: 12px;
-                                background-color: rgba(0, 122, 255, 0.4);
-                            }
+                        self.drop_label.setStyleSheet(f'''
+                            QLabel {{ color: #FFFFFF; font-size: 14px; font-weight: 600;
+                                padding: 40px 30px; border: 2px dashed #A44735;
+                                border-radius: 12px; background-color: rgba(164, 71, 53, 0.32); }}
                         ''')
                     return
         event.ignore()
@@ -570,15 +567,9 @@ class PDFViewer(QScrollArea):
         # Reset drop zone styling
         if hasattr(self, 'drop_label') and self.drop_label.isVisible():
             self.drop_label.setStyleSheet('''
-                QLabel {
-                    color: #FFFFFF;
-                    font-size: 14px;
-                    font-weight: 500;
-                    padding: 40px 30px;
-                    border: 2px dashed #8E8E93;
-                    border-radius: 12px;
-                    background-color: rgba(120, 120, 128, 0.3);
-                }
+                QLabel { color: #FFFFFF; font-size: 14px; font-weight: 500; padding: 40px 30px;
+                    border: 2px dashed #8E8E93; border-radius: 12px;
+                    background-color: rgba(120, 120, 128, 0.3); }
             ''')
     
     def dropEvent(self, event: QDropEvent):
@@ -955,7 +946,7 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
         self.viewer1.set_parent_tool(self)  # Set parent reference
         
         # Add PDF name label at top with minimal margin
-        self.lbl_name1 = QLabel("<b style='color:#C2410C; font-size:15px; font-weight:600;'>[PDF 1]</b>")
+        self.lbl_name1 = QLabel(f"<b style='color:{COLOR_HEADER_ACCENT}; font-size:15px; font-weight:600;'>[PDF 1]</b>")
         self.lbl_name1.setContentsMargins(10, 6, 10, 4)
         v1_layout.addWidget(self.lbl_name1)
         
@@ -963,20 +954,16 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
         v1_layout.addWidget(self.viewer1.toolbar)
 
         # Header/Footer instruction message for PDF1
-        self.hf_instruction_label1 = QLabel(
-            "📜 <b>머릿글/바닥글 제외 설정</b><br>"
-            "<span style='font-size:12px;'>스크롤하여 문서 상단(머릿글)과 하단(바닥글)을 확인한 후<br>"
-            "각 영역의 높이를 조정하여 비교 대상에서 제외할 수 있습니다.</span>"
-        )
+        self.hf_instruction_label1 = QLabel(HEADER_FOOTER_INSTRUCTION_HTML)
         self.hf_instruction_label1.setObjectName('hfInstruction')
         self.hf_instruction_label1.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.hf_instruction_label1.setContentsMargins(10, 8, 10, 8)
+        self.hf_instruction_label1.setContentsMargins(10, 5, 10, 5)
         v1_layout.addWidget(self.hf_instruction_label1)
 
         v1_layout.addWidget(self.viewer1, 1)
         
         # Create PDF name labels
-        self.lbl_name2 = QLabel("<b style='color:#C2410C; font-size:15px; font-weight:600;'>[PDF 2]</b>")
+        self.lbl_name2 = QLabel(f"<b style='color:{COLOR_HEADER_ACCENT}; font-size:15px; font-weight:600;'>[PDF 2]</b>")
         
         # Bottom controls for PDF 1 (removed - moved to bottom bar)
         workspace_layout.addWidget(v1_panel)
@@ -999,14 +986,10 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
         v2_layout.addWidget(self.viewer2.toolbar)
 
         # Header/Footer instruction message for PDF2
-        self.hf_instruction_label2 = QLabel(
-            "📜 <b>머릿글/바닥글 제외 설정</b><br>"
-            "<span style='font-size:12px;'>스크롤하여 문서 상단(머릿글)과 하단(바닥글)을 확인한 후<br>"
-            "각 영역의 높이를 조정하여 비교 대상에서 제외할 수 있습니다.</span>"
-        )
+        self.hf_instruction_label2 = QLabel(HEADER_FOOTER_INSTRUCTION_HTML)
         self.hf_instruction_label2.setObjectName('hfInstruction')
         self.hf_instruction_label2.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.hf_instruction_label2.setContentsMargins(10, 8, 10, 8)
+        self.hf_instruction_label2.setContentsMargins(10, 5, 10, 5)
         v2_layout.addWidget(self.hf_instruction_label2)
 
         v2_layout.addWidget(self.viewer2, 1)
@@ -1068,14 +1051,14 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
 
         # Extract data button (secondary) - 가장 왼쪽
         self.btn_view_text = QPushButton('📋  추출 데이터 확인')
-        self.btn_view_text.setObjectName('secondaryBtn')
+        self.btn_view_text.setObjectName('compareUtilityBtn')
         self.btn_view_text.setFixedHeight(40)
         self.btn_view_text.setMinimumWidth(150)
         bottom_action_layout.addWidget(self.btn_view_text)
 
         # Result list button - 추출데이터확인 오른쪽
         self.btn_diff_list = QPushButton('📋 비교결과')
-        self.btn_diff_list.setObjectName('secondaryBtn')
+        self.btn_diff_list.setObjectName('compareUtilityBtn')
         self.btn_diff_list.setFixedHeight(40)
         self.btn_diff_list.setMinimumWidth(100)
         self.btn_diff_list.clicked.connect(self.show_diff_list_dialog)
@@ -1086,7 +1069,7 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
 
         # Center: Compare button (primary)
         self.btn_compare = QPushButton('▶️  비교 실행')
-        self.btn_compare.setObjectName('compareBtn')
+        self.btn_compare.setObjectName('compareActionBtn')
         self.btn_compare.setFixedHeight(42)
         self.btn_compare.setMinimumWidth(150)
         bottom_action_layout.addWidget(self.btn_compare)
@@ -1095,7 +1078,7 @@ class PdfCompareWidget(ComparisonSettingsMixin, QWidget):
 
         # Right: Reset buttons (destructive)
         self.btn_reset_page = QPushButton('↩  페이지 초기화')
-        self.btn_reset_page.setObjectName('resetBtn')
+        self.btn_reset_page.setObjectName('compareUtilityBtn')
         self.btn_reset_page.setFixedHeight(40)
         self.btn_reset_page.setMinimumWidth(130)
         bottom_action_layout.addWidget(self.btn_reset_page)

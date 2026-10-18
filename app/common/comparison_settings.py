@@ -115,7 +115,7 @@ class ComparisonSettingsMixin:
 
     def add_comparison_options_button(self, layout):
         self.btn_comparison_options = QPushButton()
-        self.btn_comparison_options.setObjectName('secondaryBtn')
+        self.btn_comparison_options.setObjectName('compareUtilityBtn')
         self.btn_comparison_options.setFixedHeight(40)
         self.btn_comparison_options.clicked.connect(self.show_comparison_options)
         self.comparison_settings.busy_changed.connect(self._set_options_busy)

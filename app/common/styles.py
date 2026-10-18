@@ -4,7 +4,24 @@ from app.common.resources import THEME_COLOR_PRIMARY
 COLOR_PRIMARY = THEME_COLOR_PRIMARY
 COLOR_SECONDARY = '#FF6D00'
 COLOR_SIDEBAR_BG = '#FFF4E6'
-COLOR_HEADER_BG = '#FFFFFF'
+COLOR_HEADER_BG = '#F5F2F0'
+COLOR_HEADER_TITLE = '#292D33'
+COLOR_HEADER_ACCENT = '#A44735'
+COLOR_HEADER_HOVER = '#F5EAE6'
+COLOR_HEADER_HOVER_STRONG = '#EEDBD5'
+COLOR_HEADER_MUTED = '#77706D'
+COLOR_HEADER_BORDER = '#DED8D5'
+COLOR_HEADER_ACCENT_TEXT = '#8E4235'
+COLOR_HEADER_ACCENT_BORDER = '#E5C6BE'
+COLOR_HEADER_PRIMARY_HOVER = '#873729'
+COLOR_HEADER_PRIMARY_PRESSED = '#6F2C21'
+HEADER_FOOTER_INSTRUCTION_HTML = (
+    "<span style='color:#A44735; border:1px solid #E5C6BE; border-radius:8px; "
+    "font-size:10px; font-weight:700;'>i</span> "
+    "<b style='color:#8E4235; font-size:13px;'>머릿글/바닥글 제외 설정</b> "
+    "<span style='color:#6E3930; font-size:11px;'>스크롤하여 문서 상단(머릿글)과 하단(바닥글)을 "
+    "확인한 후 각 영역의 높이를 조정하여 비교 대상에서 제외할 수 있습니다.</span>"
+)
 COLOR_MDI_BG = '#F2F2F7'
 COLOR_WORKSPACE_DARK = '#2A1F18'  # warm dark brown for PDF viewers
 COLOR_TEXT_PRIMARY = '#1C1C1E'
@@ -104,22 +121,53 @@ QPushButton#sidebarBtn[active='true'] {{
 
 /* ── Header Bar ── */
 QFrame#headerBar {{
-    background-color: rgba(255, 255, 255, 0.92);
+    background-color: {COLOR_HEADER_BG};
     border: none;
-    border-bottom: 0.5px solid {_IOS_SEPARATOR};
+    border-bottom: 1px solid {COLOR_HEADER_BORDER};
 }}
 
 QLabel#headerTitle {{
-    color: {COLOR_TEXT_PRIMARY};
+    color: {COLOR_HEADER_TITLE};
     font-size: 17px;
-    font-weight: 700;
-    letter-spacing: -0.4px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
 }}
 
 QLabel#headerTarget {{
     color: {COLOR_TEXT_MUTED};
     font-size: 12px;
     font-weight: 400;
+}}
+
+QFrame#headerAccent {{
+    background-color: {COLOR_HEADER_ACCENT};
+    border: none;
+    border-radius: 1px;
+}}
+
+QPushButton#headerLegendBtn {{
+    background-color: {COLOR_HEADER_HOVER};
+    border: 1px solid {COLOR_HEADER_ACCENT_BORDER};
+    border-radius: 7px;
+    padding: 5px 11px;
+    color: {COLOR_HEADER_ACCENT_TEXT};
+    font-size: 12px;
+    font-weight: 600;
+}}
+
+QPushButton#headerLegendBtn:hover {{
+    background-color: {COLOR_HEADER_HOVER_STRONG};
+    border-color: #DDB6AB;
+}}
+
+QPushButton#headerLegendBtn:pressed {{
+    background-color: {COLOR_HEADER_ACCENT_BORDER};
+}}
+
+QPushButton#headerLegendBtn:disabled {{
+    background-color: {COLOR_HEADER_BG};
+    color: {COLOR_HEADER_MUTED};
+    border-color: {COLOR_HEADER_BORDER};
 }}
 
 QPushButton#hamburgerBtn {{
@@ -331,18 +379,20 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
     border: none;
     border-radius: 8px;
     font-size: 18px;
-    padding: 4px 8px;
-    min-width: 32px;
-    max-width: 32px;
-    color: {_PRIMARY};
+    padding: 4px;
+    min-width: 40px;
+    max-width: 40px;
+    min-height: 40px;
+    max-height: 40px;
+    color: {COLOR_HEADER_MUTED};
 }}
 
 #infoBtn:hover {{
-    background-color: {_PRIMARY_LIGHT};
+    background-color: {COLOR_HEADER_HOVER};
 }}
 
 #infoBtn:pressed {{
-    background-color: {_PRIMARY_LIGHT_STRONG};
+    background-color: #EEDBD5;
 }}
 
 /* ── Close Tool Button ── */
@@ -352,25 +402,115 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
     border-radius: 8px;
     font-size: 14px;
     padding: 6px 10px;
-    color: {_IOS_RED};
+    color: {COLOR_HEADER_MUTED};
     font-weight: 600;
+    min-width: 36px;
+    min-height: 36px;
 }}
 
 #closeToolBtn:hover {{
-    background-color: rgba(255, 59, 48, 0.08);
+    background-color: {COLOR_HEADER_HOVER};
 }}
 
 #closeToolBtn:pressed {{
-    background-color: rgba(255, 59, 48, 0.15);
+    background-color: #EEDBD5;
 }}
 
-/* Calm orange for header/footer exclusion bars */
-QLabel#hfInstruction {{
-    color: #FFFFFF;
-    background-color: #C2410C;
-    padding: 10px 15px;
+QPushButton#headerFocusBtn {{
+    background: #FFFFFF;
+    border: 1px solid {COLOR_HEADER_ACCENT};
+    border-radius: 7px;
+    padding: 5px 13px;
+    color: {COLOR_HEADER_ACCENT};
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 34px;
+}}
+
+QPushButton#headerFocusBtn:hover {{
+    background: {COLOR_HEADER_HOVER};
+}}
+
+QPushButton#headerFocusBtn:checked {{
+    background: {COLOR_HEADER_HOVER};
+    border-color: {COLOR_HEADER_ACCENT_BORDER};
+    color: #873729;
+}}
+
+QPushButton#compareUtilityBtn {{
+    background: #FFFFFF;
+    border: 1px solid {COLOR_HEADER_BORDER};
     border-radius: 8px;
+    padding: 0px 14px;
+    color: #4B4643;
+    font-weight: 500;
     font-size: 13px;
+    min-height: 38px;
+}}
+
+QPushButton#compareUtilityBtn:hover {{
+    background: {COLOR_HEADER_BG};
+    border-color: #CFC4BF;
+}}
+
+QPushButton#compareUtilityBtn:pressed {{
+    background: #EEEAE7;
+}}
+
+QPushButton#compareActionBtn {{
+    background-color: {COLOR_HEADER_ACCENT};
+    color: #FFFFFF;
+    border: 1px solid {COLOR_HEADER_ACCENT};
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 38px;
+    padding: 8px 20px;
+}}
+
+QPushButton#compareActionBtn:hover {{
+    background-color: {COLOR_HEADER_PRIMARY_HOVER};
+    border-color: {COLOR_HEADER_PRIMARY_HOVER};
+}}
+
+QPushButton#compareActionBtn:pressed {{
+    background-color: {COLOR_HEADER_PRIMARY_PRESSED};
+}}
+
+QPushButton#compareActionBtn:disabled {{
+    background-color: #E4DEDA;
+    color: #817975;
+    border-color: #D5CDC8;
+}}
+
+QPushButton#pdfOpenButton {{
+    background-color: {COLOR_HEADER_ACCENT};
+    color: #FFFFFF;
+    border: 1px solid {COLOR_HEADER_ACCENT};
+    border-radius: 8px;
+}}
+
+QPushButton#pdfOpenButton:hover {{
+    background-color: {COLOR_HEADER_PRIMARY_HOVER};
+}}
+
+QPushButton#pdfOpenButton:pressed {{
+    background-color: {COLOR_HEADER_PRIMARY_PRESSED};
+}}
+
+QPushButton#pdfOpenButton:disabled {{
+    background-color: #E4DEDA;
+    color: #817975;
+    border-color: #D5CDC8;
+}}
+
+QLabel#hfInstruction {{
+    color: #6E3930;
+    background-color: #F5EAE6;
+    border: 1px solid #E5C6BE;
+    border-radius: 7px;
+    padding: 5px 10px;
+    font-size: 12px;
 }}
 #pdfToolbar {{
     background-color: rgba(248, 248, 250, 0.95);
