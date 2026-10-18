@@ -63,6 +63,8 @@ def build(target_name: str, version: str = None, release_date: str = None, onefi
         'app.tools.pdf_compare',
         '--hidden-import',
         'app.tools.pdf_header_footer_compare',
+        '--hidden-import',
+        'app.tools.pdf_modify',
         str(project_root / 'main.py'),
     ]
     # 원파일 모드 (--onefile) 또는 디렉터리 모드 (기본)
