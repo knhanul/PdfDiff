@@ -123,21 +123,18 @@ class MdiMainWindow(QMainWindow):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 0, 16, 0)
 
+        self.header_accent = QFrame()
+        self.header_accent.setObjectName('headerAccent')
+        self.header_accent.setFixedSize(3, 22)
+        header_layout.addWidget(self.header_accent)
+        header_layout.addSpacing(10)
         self.header_title = QLabel(APP_NAME)
         self.header_title.setObjectName('headerTitle')
         header_layout.addWidget(self.header_title)
-        header_layout.addSpacing(10)
-        self.header_target = QLabel(COMPANY_NAME)
-        self.header_target.setObjectName('headerTarget')
-        header_layout.addWidget(self.header_target)
         header_layout.addStretch()
 
-        version_label = QLabel(f'v{VERSION}')
-        version_label.setObjectName('headerTarget')
-        header_layout.addWidget(version_label)
-        header_layout.addSpacing(8)
         self.legend_caution_btn = QPushButton('📋 범례 및 주의사항')
-        self.legend_caution_btn.setObjectName('actionBtn')
+        self.legend_caution_btn.setObjectName('headerLegendBtn')
         self.legend_caution_btn.setVisible(False)  # Initially hidden
         self.legend_caution_btn.clicked.connect(self.show_legend_caution_for_active_tool)
         header_layout.addWidget(self.legend_caution_btn)
@@ -149,7 +146,7 @@ class MdiMainWindow(QMainWindow):
             self.info_btn.setIcon(QIcon(about_icon))
             self.info_btn.setIconSize(QSize(20, 20))
         else:
-            self.info_btn.setText('ℹ️')
+            self.info_btn.setText('ⓘ')
         self.info_btn.setToolTip('프로그램 정보')
         self.info_btn.clicked.connect(self.show_info)
         header_layout.addWidget(self.info_btn)
@@ -157,12 +154,12 @@ class MdiMainWindow(QMainWindow):
         # 현재 도구 닫기 버튼
         self.close_tool_btn = QPushButton('✕')
         self.close_tool_btn.setObjectName('closeToolBtn')
-        self.close_tool_btn.setToolTip('현재 도구 닫기')
+        self.close_tool_btn.setToolTip('현재 도구 닫기 (프로그램은 종료되지 않습니다)')
         self.close_tool_btn.clicked.connect(self.close_current_tool)
         header_layout.addWidget(self.close_tool_btn)
         header_layout.addSpacing(4)
         self.header_focus_btn = QPushButton('집중모드')
-        self.header_focus_btn.setObjectName('secondaryBtn')
+        self.header_focus_btn.setObjectName('headerFocusBtn')
         self.header_focus_btn.setCheckable(True)
         self.header_focus_btn.clicked.connect(self.toggle_sidebar)
         header_layout.addWidget(self.header_focus_btn)
@@ -373,7 +370,7 @@ class MdiMainWindow(QMainWindow):
     def toggle_button_blink(self):
         self.blink_state = not self.blink_state
         if self.blink_state:
-            self.legend_caution_btn.setStyleSheet('QPushButton#actionBtn { background-color: #FFA500; color: white; }')
+            self.legend_caution_btn.setStyleSheet('QPushButton#headerLegendBtn { background-color: #EEDBD5; }')
         else:
             self.legend_caution_btn.setStyleSheet('')
 
@@ -398,6 +395,16 @@ class MdiMainWindow(QMainWindow):
                 'singleton': True,
                 'enabled': True,
                 'icon': '📄',
+            },
+            {
+                'key': 'pdf_modify',
+                'menu_title': 'PDF 수정',
+                'window_title': 'PDF 수정 (텍스트 직접 편집)',
+                'module_path': 'app.tools.pdf_modify',
+                'class_name': 'PdfModifyWidget',
+                'singleton': True,
+                'enabled': True,
+                'icon': '✎',
             },
             {
                 'key': 'pdf_editor',
@@ -461,6 +468,8 @@ class MdiMainWindow(QMainWindow):
                 module = importlib.import_module(tool_definition['module_path'])
                 factory_class = getattr(module, tool_definition['class_name'])
                 new_tool = factory_class(comparison_settings=self.comparison_settings)
+                if tool_key == 'pdf_modify':
+                    new_tool.compare_requested.connect(self.open_modified_comparison)
                 if hasattr(new_tool, 'btn_focus_mode'):
                     new_tool.btn_focus_mode.clicked.connect(self.toggle_sidebar)
                 # 비교 도구 전환 토글 연결 (영역지정비교 ↔ 전체비교)
@@ -491,10 +500,37 @@ class MdiMainWindow(QMainWindow):
         if hasattr(new_tool, 'switch_toggle'):
             new_tool.switch_toggle.set_active(0 if tool_key == 'pdf_compare' else 1)
 
+    def open_modified_comparison(self, original, modified):
+        if self.comparison_settings.busy:
+            QMessageBox.information(self, 'PDF 수정', '진행 중인 비교가 끝난 후 다시 시도하세요.')
+            return
+        existing = self.tool_cache.get('pdf_hf_compare')
+        if existing and (existing.viewer1.pdf_doc or existing.viewer2.pdf_doc):
+            answer = QMessageBox.question(self, '전체비교',
+                '전체비교에 열려 있는 문서를 원본과 수정본으로 바꿀까요?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self.open_tool('pdf_hf_compare')
+        if self.current_tool_key != 'pdf_hf_compare':
+            return
+        tool = self.current_tool_widget
+        for viewer, path in ((tool.viewer1, original), (tool.viewer2, modified)):
+            viewer.clear_all_data()
+            if not viewer.load_pdf(path):
+                QMessageBox.warning(self, '전체비교', '비교할 PDF를 불러오지 못했습니다.')
+                return
+            viewer.update_loaded_pdf_label(path)
+
     def close_current_tool(self):
         """현재 활성화된 도구 닫기"""
         if not self.current_tool_widget:
             return
+        if hasattr(self.current_tool_widget, 'confirm_discard'):
+            if not self.current_tool_widget.confirm_discard():
+                return
+            self.current_tool_widget.dispose()
 
         # close()를 호출하여 closeEvent가 실행되도록 함 (스레드 정리)
         self.current_tool_widget.close()
@@ -526,6 +562,13 @@ class MdiMainWindow(QMainWindow):
     def closeEvent(self, event):
         """애플리케이션 종료 시 모든 스레드 정리 (좀비 프로세스 방지)"""
         # 현재 활성화된 도구의 스레드 정리
+        for tool in self.tool_cache.values():
+            if hasattr(tool, 'confirm_discard') and not tool.confirm_discard():
+                event.ignore()
+                return
+        for tool in self.tool_cache.values():
+            if hasattr(tool, 'dispose'):
+                tool.dispose()
         if self.current_tool_widget:
             self.current_tool_widget.close()
         
