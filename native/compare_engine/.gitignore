@@ -1,0 +1,9 @@
+build/
+*.pyd
+*.so
+*.dll
+.vs/
+.vscode/
+__pycache__/
+*.pyc
+cmake-build-*/
