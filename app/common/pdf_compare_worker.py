@@ -3,11 +3,75 @@ PDF Compare Worker - 백그라운드 스레드에서 PDF 비교 수행
 
 QThread + Worker 패턴을 사용하여 메인 스레드 블로킹 없이
 PDF 비교 작업을 수행하고 결과를 signal로 전달합니다.
+
+네이티브 compare_engine (C++/pybind11)이 있으면 우선 사용하고,
+없으면 기존 difflib.SequenceMatcher로 폴백합니다.
 """
 import time
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 from difflib import SequenceMatcher
 from typing import List, Dict, Any, Tuple, Optional
+
+# 네이티브 엔진 시도 (없으면 None)
+try:
+    import compare_engine as _ce
+    _NATIVE_AVAILABLE = True
+except ImportError:
+    _ce = None
+    _NATIVE_AVAILABLE = False
+
+
+def _dict_to_glyph(d: Dict) -> Any:
+    """Python dict 형태 문자 데이터를 compare_engine.Glyph로 변환."""
+    g = _ce.Glyph()
+    g.ch = d.get('char', '') or ''
+    g.source_ch = d.get('source_char', g.ch) or g.ch
+    g.x = float(d.get('x', 0.0))
+    g.y = float(d.get('y', 0.0))
+    g.page = int(d.get('page', 0))
+    g.word_id = int(d.get('word_id', 0))
+    bbox = d.get('bbox')
+    if bbox and len(bbox) >= 4:
+        g.bbox = [float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])]
+    return g
+
+
+def _native_diff(char_data1: List[Dict], char_data2: List[Dict]) -> Optional[List[Tuple]]:
+    """
+    네이티브 엔진으로 diff 수행.
+    반환: opcodes 스타일 리스트 [(tag, i1, i2, j1, j2), ...] 또는 None (실패 시)
+    """
+    if not _NATIVE_AVAILABLE or not char_data1 or not char_data2:
+        return None
+    try:
+        opts = _ce.ComparisonOptions()
+        opts.mode = _ce.Mode.Body
+
+        glyphs1 = [_dict_to_glyph(d) for d in char_data1]
+        glyphs2 = [_dict_to_glyph(d) for d in char_data2]
+
+        # 정규화 (엔진 내부에서 필터링)
+        norm1 = _ce.normalize(glyphs1, opts, page_aware=True)
+        norm2 = _ce.normalize(glyphs2, opts, page_aware=True)
+
+        ops = _ce.diff(norm1, norm2)
+
+        # DiffOp → (tag, i1, i2, j1, j2) 변환
+        # 주의: 정규화 후 인덱스가 원본과 달라질 수 있으므로,
+        # 현재 골격에서는 정규화 결과 기준으로 opcodes를 만듭니다.
+        # 정밀한 매핑은 엔진이 더 완성된 뒤 개선합니다.
+        opcodes = []
+        for op in ops:
+            tag = {
+                _ce.DiffType.Equal: 'equal',
+                _ce.DiffType.Insert: 'insert',
+                _ce.DiffType.Delete: 'delete',
+                _ce.DiffType.Replace: 'replace',
+            }.get(op.type, 'equal')
+            opcodes.append((tag, op.a_start, op.a_end, op.b_start, op.b_end))
+        return opcodes
+    except Exception:
+        return None
 
 
 class PdfCompareWorker(QObject):
@@ -88,9 +152,13 @@ class PdfCompareWorker(QObject):
                 
             s2_norm = ''.join([d.get('char', '') for d in self.char_data2])
             
-            # 2. SequenceMatcher 실행
-            matcher = SequenceMatcher(None, s1_norm, s2_norm, autojunk=False)
-            opcodes = list(matcher.get_opcodes())
+            # 2. Diff 실행 (네이티브 우선, 실패 시 difflib)
+            opcodes = _native_diff(self.char_data1, self.char_data2)
+            used_native = opcodes is not None
+            if opcodes is None:
+                matcher = SequenceMatcher(None, s1_norm, s2_norm, autojunk=False)
+                opcodes = list(matcher.get_opcodes())
+            
             total_ops = len(opcodes)
             
             # 3. 하이라이트 데이터 생성 (UI 직접 접근 금지)
@@ -120,6 +188,9 @@ class PdfCompareWorker(QObject):
                     continue
                 
                 # 하이라이트 데이터 수집
+                # 네이티브 사용 시 인덱스는 정규화 결과 기준이므로,
+                # 현재는 원본 char_data에 그대로 적용 (골격 단계).
+                # 정밀 매핑은 엔진 완성 후 개선.
                 if tag in ('delete', 'replace'):
                     hl_data, pages = self._collect_highlights(self.char_data1, i1, i2)
                     highlights1.extend(hl_data)
@@ -143,6 +214,7 @@ class PdfCompareWorker(QObject):
                 'pending_rect1': self.pending_rect1,
                 'pending_rect2': self.pending_rect2,
                 'opcodes': opcodes,  # 동기화용 anchor 생성에 필요
+                'used_native': used_native,
             }
             
             self.result_ready.emit(result)

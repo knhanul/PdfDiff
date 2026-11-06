@@ -50,6 +50,62 @@ def _prepare_splash_image(project_root: Path, target_name: str):
         return splash_src
 
 
+def _build_native_engine(project_root: Path) -> Path | None:
+    """native/compare_engine을 빌드하고 .pyd 경로를 반환한다.
+
+    실패해도 예외를 던지지 않고 None을 반환한다 (폴백 가능).
+    """
+    engine_dir = project_root / 'native' / 'compare_engine'
+    if not engine_dir.exists():
+        print('[native] native/compare_engine 디렉터리가 없습니다. 스킵합니다.')
+        return None
+
+    build_dir = engine_dir / 'build'
+    build_dir.mkdir(exist_ok=True)
+
+    try:
+        print('[native] CMake configure...')
+        subprocess.run(
+            ['cmake', '..', '-DCMAKE_BUILD_TYPE=Release'],
+            cwd=build_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        print('[native] CMake build...')
+        subprocess.run(
+            ['cmake', '--build', '.', '--config', 'Release'],
+            cwd=build_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        print('[native] cmake를 찾을 수 없습니다. 네이티브 엔진 빌드를 스킵합니다.')
+        return None
+    except subprocess.CalledProcessError as e:
+        print(f'[native] 빌드 실패 (코드 {e.returncode}). 네이티브 엔진을 스킵합니다.')
+        if e.stderr:
+            print(e.stderr[-500:])
+        return None
+
+    # Windows: build/Release/compare_engine.pyd
+    # 기타: build/compare_engine.so 등
+    candidates = [
+        build_dir / 'Release' / 'compare_engine.pyd',
+        build_dir / 'compare_engine.pyd',
+        build_dir / 'compare_engine.so',
+        build_dir / 'Release' / 'compare_engine.so',
+    ]
+    for c in candidates:
+        if c.exists():
+            print(f'[native] 빌드 성공: {c}')
+            return c
+
+    print('[native] 빌드 산출물을 찾지 못했습니다.')
+    return None
+
+
 def build(target_name: str, version: str = None, release_date: str = None, onefile: bool = False):
     project_root = Path(__file__).resolve().parent
     target = TARGETS[target_name]
@@ -70,6 +126,9 @@ def build(target_name: str, version: str = None, release_date: str = None, onefi
         env['APP_VERSION'] = version
     if release_date:
         env['PDF_COMPARE_RELEASE_DATE'] = release_date
+
+    # 네이티브 비교 엔진 빌드 시도 (실패해도 계속 진행)
+    native_pyd = _build_native_engine(project_root)
     
     separator = ';' if os.name == 'nt' else ':'
     command = [
@@ -131,6 +190,12 @@ def build(target_name: str, version: str = None, release_date: str = None, onefi
     if version_file.exists():
         add_data_arg = f"{version_file}{separator}app/common"
         command[10:10] = ['--add-data', add_data_arg]
+
+    # 네이티브 엔진 .pyd가 있으면 번들에 포함 (루트에 두어 import 가능하게)
+    if native_pyd and native_pyd.exists():
+        add_data_arg = f"{native_pyd}{separator}."
+        command[10:10] = ['--add-data', add_data_arg]
+        print(f'[native] PyInstaller에 포함: {native_pyd.name}')
     
     subprocess.run(command, cwd=project_root, env=env, check=True)
 
